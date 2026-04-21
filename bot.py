@@ -159,10 +159,13 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "btn_new_task": "📝 Новая задача",
         "btn_my_tasks": "📋 Мои задачи",
+        "btn_settings": "⚙️ Настройки",
         "btn_timezone": "🕐 Таймзона",
         "btn_help": "❓ Помощь",
-        "btn_connect": "📅 Подключить Calendar",
-        "btn_view_calendar": "📅 Мой Google Календарь",
+        "btn_connect": "📅 Подключить календарь",
+        "btn_view_calendar": "📅 Календарь",
+        "btn_disconnect_calendar": "🔌 Отключить календарь",
+        "calendar_disconnected": "📅 Календарь отключён.",
         "menu_hint": "Выбери действие или просто напиши задачу:",
     },
     "en": {
@@ -216,10 +219,13 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "btn_new_task": "📝 New task",
         "btn_my_tasks": "📋 My tasks",
+        "btn_settings": "⚙️ Settings",
         "btn_timezone": "🕐 Timezone",
         "btn_help": "❓ Help",
-        "btn_connect": "📅 Connect Calendar",
-        "btn_view_calendar": "📅 My Google Calendar",
+        "btn_connect": "📅 Connect calendar",
+        "btn_view_calendar": "📅 Calendar",
+        "btn_disconnect_calendar": "🔌 Disconnect calendar",
+        "calendar_disconnected": "📅 Calendar disconnected.",
         "menu_hint": "Choose an action or just type a task:",
     },
     "uk": {
@@ -273,10 +279,13 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "btn_new_task": "📝 Нова задача",
         "btn_my_tasks": "📋 Мої задачі",
+        "btn_settings": "⚙️ Налаштування",
         "btn_timezone": "🕐 Часовий пояс",
         "btn_help": "❓ Допомога",
-        "btn_connect": "📅 Підключити Calendar",
-        "btn_view_calendar": "📅 Мій Google Календар",
+        "btn_connect": "📅 Підключити календар",
+        "btn_view_calendar": "📅 Календар",
+        "btn_disconnect_calendar": "🔌 Відключити календар",
+        "calendar_disconnected": "📅 Календар відключено.",
         "menu_hint": "Обери дію або просто напиши задачу:",
     },
 }
@@ -284,11 +293,8 @@ TEXTS = {
 def main_menu_keyboard(lang: str, calendar_connected: bool) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
     row1 = [KeyboardButton(t["btn_new_task"]), KeyboardButton(t["btn_my_tasks"])]
-    row2 = [KeyboardButton(t["btn_timezone"]), KeyboardButton(t["btn_help"])]
-    if calendar_connected:
-        row2.append(KeyboardButton(t["btn_view_calendar"]))
-    else:
-        row2.append(KeyboardButton(t["btn_connect"]))
+    cal_btn = KeyboardButton(t["btn_view_calendar"]) if calendar_connected else KeyboardButton(t["btn_connect"])
+    row2 = [KeyboardButton(t["btn_settings"]), cal_btn]
     return ReplyKeyboardMarkup([row1, row2], resize_keyboard=True)
 
 def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
@@ -297,13 +303,16 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     current_time = now.strftime("%H:%M")
     prompts = {
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
-Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM только для Q1 — рассчитывай от текущего времени {current_time}, иначе null), reason (на русском).
+Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если пользователь указал время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском).
+Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
-For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM for Q1 only — calculate from current time {current_time}, otherwise null), reason (in English).
+For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if user specified a time or relative time like "in 15 minutes" — calculate from {current_time}, otherwise null), reason (in English).
+Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
-Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM лише для Q1 — розраховуй від поточного часу {current_time}, інакше null), reason (українською).
+Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо користувач вказав час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською).
+Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
@@ -354,10 +363,12 @@ def add_to_calendar(chat_id, task):
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
     time = task.get("suggested_time")
     if time:
+        from datetime import date as _date, timedelta as _td
+        start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
+        end_dt = start_dt + _td(minutes=30)
+        end_date = end_dt.strftime("%Y-%m-%d")
         start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
-        end_min = int(time[3:5]) + 30
-        end_hour = int(time[:2]) + end_min // 60
-        end = {"dateTime": f"{date}T{end_hour:02d}:{end_min % 60:02d}:00", "timeZone": tz_name}
+        end = {"dateTime": f"{end_date}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
     else:
         from datetime import date as _date, timedelta as _td
         next_day = (_date.fromisoformat(date) + _td(days=1)).isoformat()
@@ -690,6 +701,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_text == t["btn_timezone"]:
         await timezone_command(update, context)
         return
+    if user_text == t["btn_settings"]:
+        keyboard_rows = [[
+            InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
+            InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone"),
+        ]]
+        if user and user["calendar_connected"]:
+            keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
+        await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
+        return
     if user_text == t["btn_help"]:
         await help_command(update, context)
         return
@@ -721,6 +741,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    logger.info(f"handle_voice called for chat_id={chat_id}")
     user = get_user(chat_id)
     if not user or not user["lang"]:
         await start(update, context)
@@ -774,6 +795,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         auth_url = get_auth_url(chat_id)
         await query.message.reply_text(TEXTS[lang]["connect_link"] + auth_url)
         return
+    if data == "settings_help":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(TEXTS[lang]["help"], parse_mode="Markdown")
+        return
+    if data == "settings_timezone":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await timezone_command_for_query(query, chat_id, lang)
+        return
+    if data == "disconnect_calendar":
+        save_user(chat_id, calendar_token=None, calendar_connected=0)
+        await query.edit_message_reply_markup(reply_markup=None)
+        user = get_user(chat_id)
+        await query.message.reply_text(
+            TEXTS[lang]["calendar_disconnected"],
+            reply_markup=main_menu_keyboard(lang, False)
+        )
+        return
     if data == "skip_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
         return
@@ -825,10 +863,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["skipped"] + task["title"])
 
-async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
+async def show_timezone_menu(message, chat_id, lang):
     user = get_user(chat_id)
-    lang = user["lang"] if user else "ru"
     current_tz = user["timezone"] if user else "Europe/Moscow"
     rows = []
     for i in range(0, len(POPULAR_TIMEZONES), 2):
@@ -837,11 +873,20 @@ async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row.append(InlineKeyboardButton(POPULAR_TIMEZONES[i + 1][0], callback_data=f"tz_{i+1}"))
         rows.append(row)
     rows.append([InlineKeyboardButton(TEXTS[lang]["timezone_manual"], callback_data="tz_manual")])
-    await update.message.reply_text(
+    await message.reply_text(
         TEXTS[lang]["timezone_current"].format(tz=current_tz),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(rows)
     )
+
+async def timezone_command_for_query(query, chat_id, lang):
+    await show_timezone_menu(query.message, chat_id, lang)
+
+async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    await show_timezone_menu(update.message, chat_id, lang)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -854,9 +899,16 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
     conn = sqlite3.connect("users.db")
+    user_tz = get_user(chat_id)["timezone"] if get_user(chat_id) else "Europe/Moscow"
+    now = datetime.now(ZoneInfo(user_tz))
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
     rows = conn.execute(
-        "SELECT title, quadrant, suggested_date, suggested_time FROM tasks WHERE chat_id=? ORDER BY id DESC LIMIT 10",
-        (chat_id,)
+        """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
+           WHERE chat_id=?
+             AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))
+           ORDER BY suggested_date ASC, suggested_time ASC LIMIT 10""",
+        (chat_id, today, today, current_time)
     ).fetchall()
     conn.close()
     if not rows:
@@ -916,6 +968,14 @@ async def main():
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(CallbackQueryHandler(handle_callback))
+    async def log_all(update, context):
+        msg = update.message
+        if msg:
+            logger.info(f"UNHANDLED message: voice={msg.voice}, audio={msg.audio}, text={msg.text}, content_type={msg.effective_attachment}")
+    bot_app.add_handler(MessageHandler(filters.ALL, log_all))
+    async def error_handler(update, context):
+        logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
+    bot_app.add_error_handler(error_handler)
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_reminders, "interval", minutes=5)
     scheduler.start()
