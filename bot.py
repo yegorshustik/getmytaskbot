@@ -810,6 +810,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         if user and user["calendar_connected"]:
             keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
+        else:
+            keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
         await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
         return
     if user_text == t["btn_help"]:
