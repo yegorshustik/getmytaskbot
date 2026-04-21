@@ -416,14 +416,6 @@ def get_auth_url(chat_id):
     pending_oauth[state] = {"chat_id": chat_id, "flow": flow}
     return auth_url
 
-def migrate_old_token(chat_id):
-    if os.path.exists("token.json"):
-        user = get_user(chat_id)
-        if user and not user["calendar_connected"]:
-            with open("token.json") as f:
-                token_data = f.read()
-            save_user(chat_id, calendar_token=token_data, calendar_connected=1)
-            logger.info(f"Migrated token.json for chat_id {chat_id}")
 
 # ─── Reminders ────────────────────────────────────────────────────────────────
 
@@ -650,7 +642,6 @@ async def process_and_show(update, context, text, chat_id, lang):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     save_user(chat_id)
-    migrate_old_token(chat_id)
     user = get_user(chat_id)
     if user and user["lang"]:
         lang = user["lang"]
@@ -771,7 +762,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("lang_"):
         lang = data.split("_")[1]
         save_user(chat_id, lang=lang)
-        migrate_old_token(chat_id)
         await query.edit_message_reply_markup(reply_markup=None)
         updated_user = get_user(chat_id)
         await query.message.reply_text(
