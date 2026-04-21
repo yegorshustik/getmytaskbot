@@ -186,6 +186,9 @@ TEXTS = {
         "morning_first_offer": "\n\n_Напоминание приходит в {time}. Хочешь изменить время?_",
         "btn_reminder_change": "🕐 Изменить время",
         "btn_reminder_disable": "🔕 Отключить",
+        "btn_archive": "🗂 Архив задач",
+        "archive_header": "🗂 *Архив выполненных задач:*\n\n",
+        "archive_empty": "Архив пуст — нет прошедших задач.",
         "menu_hint": "Выбери действие или просто напиши задачу:",
     },
     "en": {
@@ -257,6 +260,9 @@ TEXTS = {
         "morning_first_offer": "\n\n_Reminder comes at {time}. Want to change it?_",
         "btn_reminder_change": "🕐 Change time",
         "btn_reminder_disable": "🔕 Disable",
+        "btn_archive": "🗂 Task archive",
+        "archive_header": "🗂 *Completed tasks archive:*\n\n",
+        "archive_empty": "Archive is empty — no past tasks.",
         "menu_hint": "Choose an action or just type a task:",
     },
     "uk": {
@@ -328,13 +334,32 @@ TEXTS = {
         "morning_first_offer": "\n\n_Нагадування приходить о {time}. Бажаєш змінити час?_",
         "btn_reminder_change": "🕐 Змінити час",
         "btn_reminder_disable": "🔕 Вимкнути",
+        "btn_archive": "🗂 Архів задач",
+        "archive_header": "🗂 *Архів виконаних задач:*\n\n",
+        "archive_empty": "Архів порожній — немає минулих задач.",
         "menu_hint": "Обери дію або просто напиши задачу:",
     },
 }
 
-def main_menu_keyboard(lang: str, calendar_connected: bool) -> ReplyKeyboardMarkup:
+def get_active_task_count(chat_id):
+    conn = sqlite3.connect("users.db")
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    now = datetime.now(ZoneInfo(tz_name))
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+    count = conn.execute(
+        """SELECT COUNT(*) FROM tasks WHERE chat_id=?
+           AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))""",
+        (chat_id, today, today, current_time)
+    ).fetchone()[0]
+    conn.close()
+    return count
+
+def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
-    row1 = [KeyboardButton(t["btn_new_task"]), KeyboardButton(t["btn_my_tasks"])]
+    tasks_label = t["btn_my_tasks"] + (f" ({task_count})" if task_count > 0 else "")
+    row1 = [KeyboardButton(t["btn_new_task"]), KeyboardButton(tasks_label)]
     cal_btn = KeyboardButton(t["btn_view_calendar"]) if calendar_connected else KeyboardButton(t["btn_connect"])
     row2 = [KeyboardButton(t["btn_settings"]), cal_btn]
     return ReplyKeyboardMarkup([row1, row2], resize_keyboard=True)
@@ -723,7 +748,7 @@ async def handle_reschedule(update, context, text, chat_id, lang):
         user = get_user(chat_id)
         await update.message.reply_text(
             TEXTS[lang]["menu_hint"],
-            reply_markup=main_menu_keyboard(lang, user["calendar_connected"])
+            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
         )
     except Exception as e:
         await update.message.reply_text(TEXTS[lang]["error"] + str(e))
@@ -753,7 +778,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = user["lang"]
         await update.message.reply_text(
             TEXTS[lang]["menu_hint"],
-            reply_markup=main_menu_keyboard(lang, user["calendar_connected"])
+            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
         )
         return
     keyboard = InlineKeyboardMarkup([[
@@ -793,7 +818,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(TEXTS[lang]["timezone_invalid"], parse_mode="Markdown")
         return
     t = TEXTS[lang]
-    if user_text == t["btn_my_tasks"]:
+    if user_text.startswith(t["btn_my_tasks"]):
         await tasks_command(update, context)
         return
     if user_text == t["btn_timezone"]:
@@ -807,6 +832,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
              InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")],
             [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
+            [InlineKeyboardButton(t["btn_archive"], callback_data="settings_archive")],
         ]
         if user and user["calendar_connected"]:
             keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
@@ -891,7 +917,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         updated_user = get_user(chat_id)
         await query.message.reply_text(
             TEXTS[lang]["lang_set"],
-            reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"])
+            reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
         )
         return
     if data == "connect_calendar":
@@ -909,6 +935,35 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "settings_timezone":
         await query.edit_message_reply_markup(reply_markup=None)
         await timezone_command_for_query(query, chat_id, lang)
+        return
+    if data == "settings_archive":
+        await query.edit_message_reply_markup(reply_markup=None)
+        user = get_user(chat_id)
+        tz_name = user["timezone"] if user else "Europe/Moscow"
+        now = datetime.now(ZoneInfo(tz_name))
+        today = now.strftime("%Y-%m-%d")
+        current_time = now.strftime("%H:%M")
+        conn = sqlite3.connect("users.db")
+        rows = conn.execute(
+            """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
+               WHERE chat_id=?
+                 AND (suggested_date < ? OR (suggested_date = ? AND suggested_time IS NOT NULL AND suggested_time < ?))
+               ORDER BY suggested_date DESC, suggested_time DESC LIMIT 20""",
+            (chat_id, today, today, current_time)
+        ).fetchall()
+        conn.close()
+        t = TEXTS[lang]
+        if not rows:
+            await query.message.reply_text(t["archive_empty"])
+            return
+        text = t["archive_header"]
+        for title, quadrant, date, time in rows:
+            emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
+            date_display = format_date(date, lang) if date else "—"
+            if time:
+                date_display += _TIME_SEP.get(lang, " ") + time
+            text += TEXTS[lang]["tasks_item"].format(emoji=emoji, title=title, date=date_display)
+        await query.message.reply_text(text, parse_mode="Markdown")
         return
     if data == "settings_reminder":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -944,7 +999,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = get_user(chat_id)
         await query.message.reply_text(
             TEXTS[lang]["calendar_disconnected"],
-            reply_markup=main_menu_keyboard(lang, False)
+            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id))
         )
         return
     if data == "skip_calendar":
@@ -990,7 +1045,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = get_user(chat_id)
             await query.message.reply_text(
                 TEXTS[lang]["menu_hint"],
-                reply_markup=main_menu_keyboard(lang, user["calendar_connected"])
+                reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
             )
         except Exception as e:
             await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
@@ -1076,7 +1131,7 @@ async def oauth_callback(request):
     await bot_app.bot.send_message(
         chat_id=chat_id,
         text=TEXTS[lang]["calendar_connected"],
-        reply_markup=main_menu_keyboard(lang, calendar_connected=True)
+        reply_markup=main_menu_keyboard(lang, calendar_connected=True, task_count=get_active_task_count(chat_id))
     )
     return web.Response(text="✅ Calendar connected! You can close this tab.")
 
