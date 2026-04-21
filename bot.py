@@ -61,10 +61,15 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         )
     """)
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Moscow'")
-    except sqlite3.OperationalError:
-        pass
+    for col, definition in [
+        ("timezone", "TEXT DEFAULT 'Europe/Moscow'"),
+        ("reminder_time", "TEXT DEFAULT '08:00'"),
+        ("reminder_enabled", "INTEGER DEFAULT 1"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
@@ -75,9 +80,13 @@ def get_user(chat_id):
     row = c.fetchone()
     conn.close()
     if row:
-        return {"chat_id": row[0], "lang": row[1], "calendar_token": row[2],
-                "first_task_done": row[3], "calendar_connected": row[4],
-                "timezone": row[5] if len(row) > 5 and row[5] else "Europe/Moscow"}
+        return {
+            "chat_id": row[0], "lang": row[1], "calendar_token": row[2],
+            "first_task_done": row[3], "calendar_connected": row[4],
+            "timezone": row[5] if len(row) > 5 and row[5] else "Europe/Moscow",
+            "reminder_time": row[6] if len(row) > 6 and row[6] else "08:00",
+            "reminder_enabled": row[7] if len(row) > 7 else 1,
+        }
     return None
 
 def save_user(chat_id, **kwargs):
@@ -166,6 +175,17 @@ TEXTS = {
         "btn_view_calendar": "📅 Календарь",
         "btn_disconnect_calendar": "🔌 Отключить календарь",
         "calendar_disconnected": "📅 Календарь отключён.",
+        "btn_reminder": "🔔 Напоминание",
+        "reminder_settings": "🔔 *Утреннее напоминание*\nСейчас: {time}",
+        "reminder_disabled_text": "🔕 Отключено",
+        "reminder_set": "✅ Напоминание установлено на {time}",
+        "reminder_off": "🔕 Напоминания отключены.",
+        "morning_digest": "☀️ *Доброе утро!* Вот твои задачи на сегодня:\n\n{tasks}",
+        "morning_digest_future": "☀️ *Доброе утро!* Задач на сегодня нет.\n\nБлижайшие дела:\n\n{tasks}",
+        "morning_digest_empty": "☀️ *Доброе утро!* У тебя нет запланированных задач.",
+        "morning_first_offer": "\n\n_Напоминание приходит в {time}. Хочешь изменить время?_",
+        "btn_reminder_change": "🕐 Изменить время",
+        "btn_reminder_disable": "🔕 Отключить",
         "menu_hint": "Выбери действие или просто напиши задачу:",
     },
     "en": {
@@ -226,6 +246,17 @@ TEXTS = {
         "btn_view_calendar": "📅 Calendar",
         "btn_disconnect_calendar": "🔌 Disconnect calendar",
         "calendar_disconnected": "📅 Calendar disconnected.",
+        "btn_reminder": "🔔 Reminder",
+        "reminder_settings": "🔔 *Morning reminder*\nNow: {time}",
+        "reminder_disabled_text": "🔕 Disabled",
+        "reminder_set": "✅ Reminder set to {time}",
+        "reminder_off": "🔕 Reminders disabled.",
+        "morning_digest": "☀️ *Good morning!* Here are your tasks for today:\n\n{tasks}",
+        "morning_digest_future": "☀️ *Good morning!* No tasks today.\n\nUpcoming:\n\n{tasks}",
+        "morning_digest_empty": "☀️ *Good morning!* You have no scheduled tasks.",
+        "morning_first_offer": "\n\n_Reminder comes at {time}. Want to change it?_",
+        "btn_reminder_change": "🕐 Change time",
+        "btn_reminder_disable": "🔕 Disable",
         "menu_hint": "Choose an action or just type a task:",
     },
     "uk": {
@@ -286,6 +317,17 @@ TEXTS = {
         "btn_view_calendar": "📅 Календар",
         "btn_disconnect_calendar": "🔌 Відключити календар",
         "calendar_disconnected": "📅 Календар відключено.",
+        "btn_reminder": "🔔 Нагадування",
+        "reminder_settings": "🔔 *Ранкове нагадування*\nЗараз: {time}",
+        "reminder_disabled_text": "🔕 Вимкнено",
+        "reminder_set": "✅ Нагадування встановлено на {time}",
+        "reminder_off": "🔕 Нагадування вимкнено.",
+        "morning_digest": "☀️ *Доброго ранку!* Ось твої задачі на сьогодні:\n\n{tasks}",
+        "morning_digest_future": "☀️ *Доброго ранку!* Задач на сьогодні немає.\n\nНайближчі справи:\n\n{tasks}",
+        "morning_digest_empty": "☀️ *Доброго ранку!* У тебе немає запланованих задач.",
+        "morning_first_offer": "\n\n_Нагадування приходить о {time}. Бажаєш змінити час?_",
+        "btn_reminder_change": "🕐 Змінити час",
+        "btn_reminder_disable": "🔕 Вимкнути",
         "menu_hint": "Обери дію або просто напиши задачу:",
     },
 }
@@ -490,6 +532,59 @@ async def check_reminders():
                             mark_reminder_sent(chat_id, event_id, remind_key)
         except Exception as e:
             logger.error(f"Reminder error for {chat_id}: {e}")
+
+_morning_sent_today = {}  # chat_id -> date string
+
+async def send_morning_digests():
+    conn = sqlite3.connect("users.db")
+    users = conn.execute("SELECT chat_id, lang, timezone, reminder_time, reminder_enabled FROM users WHERE reminder_enabled=1 AND lang IS NOT NULL").fetchall()
+    conn.close()
+    for chat_id, lang, tz_name, reminder_time, reminder_enabled in users:
+        try:
+            tz = ZoneInfo(tz_name or "Europe/Moscow")
+            now = datetime.now(tz)
+            today = now.strftime("%Y-%m-%d")
+            current_time = now.strftime("%H:%M")
+            rtime = reminder_time or "08:00"
+            if current_time != rtime:
+                continue
+            if _morning_sent_today.get(chat_id) == today:
+                continue
+            _morning_sent_today[chat_id] = today
+            lang = lang or "ru"
+            t = TEXTS[lang]
+            # Get today's tasks
+            db = sqlite3.connect("users.db")
+            today_rows = db.execute(
+                "SELECT title, suggested_time FROM tasks WHERE chat_id=? AND suggested_date=? ORDER BY suggested_time ASC",
+                (chat_id, today)
+            ).fetchall()
+            future_rows = db.execute(
+                "SELECT title, suggested_date, suggested_time FROM tasks WHERE chat_id=? AND suggested_date>? ORDER BY suggested_date ASC, suggested_time ASC LIMIT 5",
+                (chat_id, today)
+            ).fetchall() if not today_rows else []
+            db.close()
+            if today_rows:
+                task_lines = "".join(f"• *{title}*" + (f" в {time}" if time else "") + "\n" for title, time in today_rows)
+                text = t["morning_digest"].format(tasks=task_lines)
+            elif future_rows:
+                task_lines = "".join(f"• *{title}* — {format_date(date, lang)}" + (f" в {time}" if time else "") + "\n" for title, date, time in future_rows)
+                text = t["morning_digest_future"].format(tasks=task_lines)
+            else:
+                text = t["morning_digest_empty"]
+            # First reminder offer
+            user = get_user(chat_id)
+            if user and not user.get("first_task_done"):
+                text += t["morning_first_offer"].format(time=rtime)
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t["btn_reminder_change"], callback_data="settings_reminder"),
+                    InlineKeyboardButton(t["btn_reminder_disable"], callback_data="reminder_disable"),
+                ]])
+            else:
+                markup = None
+            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
+        except Exception as e:
+            logger.error(f"Morning digest error for {chat_id}: {e}")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -705,10 +800,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await timezone_command(update, context)
         return
     if user_text == t["btn_settings"]:
-        keyboard_rows = [[
-            InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
-            InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone"),
-        ]]
+        reminder_time = user["reminder_time"] if user else "08:00"
+        reminder_enabled = user["reminder_enabled"] if user else 1
+        reminder_label = t["btn_reminder"] + f" ({reminder_time})" if reminder_enabled else t["btn_reminder"] + f" ({t['reminder_disabled_text']})"
+        keyboard_rows = [
+            [InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
+             InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")],
+            [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
+        ]
         if user and user["calendar_connected"]:
             keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
         await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
@@ -808,6 +907,34 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "settings_timezone":
         await query.edit_message_reply_markup(reply_markup=None)
         await timezone_command_for_query(query, chat_id, lang)
+        return
+    if data == "settings_reminder":
+        await query.edit_message_reply_markup(reply_markup=None)
+        user = get_user(chat_id)
+        reminder_time = user["reminder_time"] if user else "08:00"
+        reminder_enabled = user["reminder_enabled"] if user else 1
+        t = TEXTS[lang]
+        status = reminder_time if reminder_enabled else t["reminder_disabled_text"]
+        times = ["06:00","07:00","08:00","09:00","10:00","11:00","12:00"]
+        rows = [[InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[:4]],
+                [InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[4:]],
+                [InlineKeyboardButton(t["btn_reminder_disable"], callback_data="reminder_disable")]]
+        await query.message.reply_text(
+            t["reminder_settings"].format(time=status),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(rows)
+        )
+        return
+    if data.startswith("reminder_set_"):
+        new_time = data[len("reminder_set_"):]
+        save_user(chat_id, reminder_time=new_time, reminder_enabled=1)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(TEXTS[lang]["reminder_set"].format(time=new_time))
+        return
+    if data == "reminder_disable":
+        save_user(chat_id, reminder_enabled=0)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(TEXTS[lang]["reminder_off"])
         return
     if data == "disconnect_calendar":
         save_user(chat_id, calendar_token=None, calendar_connected=0)
@@ -984,6 +1111,7 @@ async def main():
     bot_app.add_error_handler(error_handler)
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_reminders, "interval", minutes=5)
+    scheduler.add_job(send_morning_digests, "interval", minutes=1)
     scheduler.start()
     await start_web_server()
     await bot_app.initialize()
