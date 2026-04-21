@@ -908,7 +908,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await handle_reschedule(update, context, user_text, chat_id, lang)
         return
-    if len(user_text) < 10:
+    if len(user_text) < 3:
         await update.message.reply_text(t["too_short"])
         return
     await update.message.reply_text(t["processing"])
@@ -1254,7 +1254,7 @@ async def main():
         BotCommand("connect", "📅 Подключить Calendar"),
         BotCommand("help", "❓ Помощь"),
     ])
-    await bot_app.updater.start_polling()
+    await bot_app.updater.start_polling(allowed_updates=["message", "callback_query"])
     print("Бот запущен...")
     await asyncio.Event().wait()
 
