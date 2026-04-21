@@ -129,7 +129,7 @@ TEXTS = {
         "offer_calendar": "📅 Хочешь добавлять задачи в Google Calendar и получать напоминания?",
         "connect_calendar": "🔗 Подключить Calendar",
         "skip_calendar": "➡️ Пропустить",
-        "connect_link": "🔗 Открой ссылку для подключения Google Calendar:\n\n",
+        "connect_link": "🔗 Подключи Google Calendar:",
         "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать тебе о задачах.",
         "calendar_not_connected": "❌ Календарь не подключён. Используй /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
@@ -189,7 +189,7 @@ TEXTS = {
         "offer_calendar": "📅 Want to add tasks to Google Calendar and get reminders?",
         "connect_calendar": "🔗 Connect Calendar",
         "skip_calendar": "➡️ Skip",
-        "connect_link": "🔗 Open this link to connect Google Calendar:\n\n",
+        "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
         "calendar_not_connected": "❌ Calendar not connected. Use /connect to connect.",
         "reminder": "🔔 Reminder: *{title}*\n📅 {time}",
@@ -249,7 +249,7 @@ TEXTS = {
         "offer_calendar": "📅 Хочеш додавати задачі до Google Calendar і отримувати нагадування?",
         "connect_calendar": "🔗 Підключити Calendar",
         "skip_calendar": "➡️ Пропустити",
-        "connect_link": "🔗 Відкрий посилання для підключення Google Calendar:\n\n",
+        "connect_link": "🔗 Підключи Google Calendar:",
         "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму тобі про задачі.",
         "calendar_not_connected": "❌ Календар не підключено. Використай /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
@@ -673,7 +673,10 @@ async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
     auth_url = get_auth_url(chat_id)
-    await update.message.reply_text(TEXTS[lang]["connect_link"] + auth_url)
+    await update.message.reply_text(
+        TEXTS[lang]["connect_link"],
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Google Calendar", url=auth_url)]])
+    )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -793,7 +796,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "connect_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
         auth_url = get_auth_url(chat_id)
-        await query.message.reply_text(TEXTS[lang]["connect_link"] + auth_url)
+        await query.message.reply_text(
+            TEXTS[lang]["connect_link"],
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Google Calendar", url=auth_url)]])
+        )
         return
     if data == "settings_help":
         await query.edit_message_reply_markup(reply_markup=None)
