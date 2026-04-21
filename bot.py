@@ -373,9 +373,9 @@ def get_active_task_count(chat_id):
 def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
     tasks_label = t["btn_my_tasks"] + (f" ({task_count})" if task_count > 0 else "")
-    row1 = [KeyboardButton(t["btn_new_task"]), KeyboardButton(tasks_label)]
     cal_btn = KeyboardButton(t["btn_view_calendar"]) if calendar_connected else KeyboardButton(t["btn_connect"])
-    row2 = [KeyboardButton(t["btn_settings"]), cal_btn]
+    row1 = [KeyboardButton(tasks_label), KeyboardButton(t["btn_settings"])]
+    row2 = [cal_btn]
     return ReplyKeyboardMarkup([row1, row2], resize_keyboard=True)
 
 def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
