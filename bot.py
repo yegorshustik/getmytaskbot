@@ -195,7 +195,7 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
         "task_reminder": "⏰ Напоминание: *{title}* начнётся в {time}",
-        "menu_hint": "Выбери действие или просто напиши задачу:",
+        "menu_hint": "Надиктуй или опиши задачу:",
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -273,7 +273,7 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
         "reminder_before_set": "✅ Will remind {min} min before task.",
         "task_reminder": "⏰ Reminder: *{title}* starts at {time}",
-        "menu_hint": "Choose an action or just type a task:",
+        "menu_hint": "Dictate or describe a task:",
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -351,7 +351,7 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
         "task_reminder": "⏰ Нагадування: *{title}* починається о {time}",
-        "menu_hint": "Обери дію або просто напиши задачу:",
+        "menu_hint": "Надиктуй або опиши задачу:",
     },
 }
 
@@ -1234,8 +1234,8 @@ async def main():
     async def log_all(update, context):
         msg = update.message
         if msg:
-            logger.info(f"UNHANDLED message: voice={msg.voice}, audio={msg.audio}, text={msg.text}, content_type={msg.effective_attachment}")
-    bot_app.add_handler(MessageHandler(filters.ALL, log_all))
+            logger.info(f"INCOMING: voice={bool(msg.voice)}, audio={bool(msg.audio)}, text={repr(msg.text)}, video_note={bool(msg.video_note)}, attachment={msg.effective_attachment}")
+    bot_app.add_handler(MessageHandler(filters.ALL, log_all), group=-1)
     async def error_handler(update, context):
         logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
     bot_app.add_error_handler(error_handler)
