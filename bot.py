@@ -713,9 +713,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
         )
         return
-    if user_text == t["btn_new_task"]:
-        await update.message.reply_text(t["menu_hint"], reply_markup=ReplyKeyboardRemove())
-        return
     if "pending_task" in context.user_data:
         if len(user_text) < 3:
             await update.message.reply_text(t["correction_unclear"])
