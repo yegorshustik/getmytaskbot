@@ -1361,6 +1361,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 tasks = json.loads(pending_json)
                 context.user_data["tasks"] = tasks
+                # Clear DB copy — tasks are now cached in memory for this session
+                save_user(chat_id, pending_task_json=None)
             except Exception:
                 pass
     if idx_int >= len(tasks):
@@ -1548,7 +1550,8 @@ async def oauth_callback(request):
     if pending_json:
         try:
             pending_tasks = json.loads(pending_json)
-            save_user(chat_id, pending_task_json=None)
+            # Note: don't clear pending_task_json here — user hasn't acted on tasks yet.
+            # It'll be cleared once they press add/save/skip (see handle_callback).
             resume_texts = {
                 "ru": "📋 Вот ваши задачи — теперь можно добавить в Google Calendar:",
                 "en": "📋 Here are your tasks — now you can add them to Google Calendar:",
