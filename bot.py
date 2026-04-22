@@ -6,7 +6,7 @@ import logging
 import sqlite3
 import asyncio
 import tempfile
-from datetime import datetime, timedelta, timezone as _utc
+from datetime import datetime, timedelta, timezone as _utc, date as _date
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 from groq import Groq
@@ -69,9 +69,19 @@ def init_db():
         ("reminder_time", "TEXT DEFAULT '08:00'"),
         ("reminder_enabled", "INTEGER DEFAULT 1"),
         ("reminder_before", "INTEGER DEFAULT 30"),
+        ("reminder_minutes", "INTEGER DEFAULT 30"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        except sqlite3.OperationalError:
+            pass
+    for col, definition in [
+        ("description", "TEXT DEFAULT ''"),
+        ("quadrant_name", "TEXT DEFAULT ''"),
+        ("done", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
         except sqlite3.OperationalError:
             pass
     conn.commit()
@@ -91,6 +101,7 @@ def get_user(chat_id):
             "reminder_time": row[6] if len(row) > 6 and row[6] else "08:00",
             "reminder_enabled": row[7] if len(row) > 7 else 1,
             "reminder_before": row[8] if len(row) > 8 and row[8] is not None else 30,
+            "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
         }
     return None
 
@@ -201,6 +212,8 @@ TEXTS = {
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
         "task_reminder": "⏰ Напоминание: *{title}* начнётся в {time}",
         "menu_hint": "Надиктуйте или опишите задачу:",
+        "reminder_ask": "⏰ За сколько минут напоминать о задачах?",
+        "reminder_ask_set": "✅ Буду напоминать за {min} мин до задачи.",
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -281,6 +294,8 @@ TEXTS = {
         "reminder_before_set": "✅ Will remind {min} min before task.",
         "task_reminder": "⏰ Reminder: *{title}* starts at {time}",
         "menu_hint": "Dictate or describe a task:",
+        "reminder_ask": "⏰ How many minutes before a task should I remind you?",
+        "reminder_ask_set": "✅ I'll remind you {min} min before each task.",
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -361,6 +376,8 @@ TEXTS = {
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
         "task_reminder": "⏰ Нагадування: *{title}* починається о {time}",
         "menu_hint": "Надиктуйте або опишіть задачу:",
+        "reminder_ask": "⏰ За скільки хвилин нагадувати про задачі?",
+        "reminder_ask_set": "✅ Нагадуватиму за {min} хв до задачі.",
     },
 }
 
@@ -450,6 +467,7 @@ def add_to_calendar(chat_id, task):
         return None
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
+    reminder_mins = user.get("reminder_minutes", 30) if user else 30
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
     time = task.get("suggested_time")
     if time:
@@ -467,6 +485,10 @@ def add_to_calendar(chat_id, task):
         "description": f"{task['description']}\n\n{task['quadrant']} — {task['quadrant_name']}\n{task['reason']}",
         "start": start,
         "end": end,
+        "reminders": {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": reminder_mins}]
+        }
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
     save_task_to_db(chat_id, task)
@@ -475,8 +497,8 @@ def add_to_calendar(chat_id, task):
 def save_task_to_db(chat_id, task):
     conn = sqlite3.connect("users.db")
     conn.execute(
-        "INSERT INTO tasks (chat_id, title, quadrant, suggested_date, suggested_time) VALUES (?,?,?,?,?)",
-        (chat_id, task["title"], task.get("quadrant",""), task.get("suggested_date",""), task.get("suggested_time",""))
+        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done) VALUES (?,?,?,?,?,?,?,0)",
+        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""))
     )
     conn.commit()
     conn.close()
@@ -584,7 +606,7 @@ async def check_reminders():
 
 async def check_task_reminders():
     conn = sqlite3.connect("users.db")
-    users = conn.execute("SELECT chat_id, lang, timezone, reminder_before FROM users WHERE reminder_before > 0 AND lang IS NOT NULL").fetchall()
+    users = conn.execute("SELECT chat_id, lang, timezone, reminder_minutes FROM users WHERE reminder_minutes > 0 AND lang IS NOT NULL").fetchall()
     for chat_id, lang, tz_name, reminder_before in users:
         try:
             tz = ZoneInfo(tz_name or "Europe/Moscow")
@@ -724,7 +746,6 @@ _TIME_SEP = {"ru": " в ", "uk": " о ", "en": " at "}
 
 def format_date(date_str: str, lang: str) -> str:
     try:
-        from datetime import date as _date
         d = _date.fromisoformat(date_str)
         months = _MONTHS.get(lang, _MONTHS["en"])
         if lang == "en":
@@ -788,7 +809,7 @@ async def show_tasks(update, chat_id, tasks, lang):
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
-        apple_row = [InlineKeyboardButton("📎 Apple Calendar", callback_data=f"ics_{i}")]
+        apple_row = [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")]
         if user and user["calendar_connected"]:
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
@@ -809,6 +830,23 @@ async def offer_calendar(update, chat_id, lang):
         InlineKeyboardButton(TEXTS[lang]["skip_calendar"], callback_data="skip_calendar"),
     ]])
     await update.message.reply_text(TEXTS[lang]["offer_calendar"], reply_markup=keyboard)
+
+async def ask_reminder_minutes(target, chat_id, lang):
+    """target can be update.message or bot (for send_message)"""
+    t = TEXTS[lang]
+    opts = [5, 15, 30, 60, 120]
+    labels = {
+        "ru": {5:"5 мин", 15:"15 мин", 30:"30 мин", 60:"1 час", 120:"2 часа"},
+        "en": {5:"5 min", 15:"15 min", 30:"30 min", 60:"1 hour", 120:"2 hours"},
+        "uk": {5:"5 хв", 15:"15 хв", 30:"30 хв", 60:"1 год", 120:"2 год"},
+    }
+    lang_labels = labels.get(lang, labels["en"])
+    rows = [[InlineKeyboardButton(lang_labels[m], callback_data=f"set_remind_min_{m}") for m in opts]]
+    markup = InlineKeyboardMarkup(rows)
+    if hasattr(target, 'reply_text'):
+        await target.reply_text(t["reminder_ask"], reply_markup=markup)
+    else:
+        await target.send_message(chat_id=chat_id, text=t["reminder_ask"], reply_markup=markup)
 
 async def handle_reschedule(update, context, text, chat_id, lang):
     try:
@@ -927,7 +965,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reminder_time = user["reminder_time"] if user else "08:00"
         reminder_enabled = user["reminder_enabled"] if user else 1
         reminder_label = t["btn_reminder"] + f" ({reminder_time})" if reminder_enabled else t["btn_reminder"] + f" ({t['reminder_disabled_text']})"
-        reminder_before = user["reminder_before"] if user else 30
+        reminder_before = user["reminder_minutes"] if user else 30
         before_label = t["btn_reminder_before"].format(min=reminder_before)
         keyboard_rows = [
             [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
@@ -1046,7 +1084,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "settings_reminder_before":
         await query.edit_message_reply_markup(reply_markup=None)
         user = get_user(chat_id)
-        minutes = user["reminder_before"] if user else 30
+        minutes = user["reminder_minutes"] if user else 30
         t = TEXTS[lang]
         opts = [10, 15, 30, 60, 120]
         rows = [[InlineKeyboardButton(f"{m} мин" if lang == "ru" else f"{m} min", callback_data=f"reminder_before_{m}") for m in opts]]
@@ -1059,12 +1097,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data.startswith("reminder_before_") and data != "reminder_before_off":
         mins = int(data[len("reminder_before_"):])
-        save_user(chat_id, reminder_before=mins)
+        save_user(chat_id, reminder_before=mins, reminder_minutes=mins)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_before_set"].format(min=mins))
         return
     if data == "reminder_before_off":
-        save_user(chat_id, reminder_before=0)
+        save_user(chat_id, reminder_before=0, reminder_minutes=0)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_off"])
         return
@@ -1153,18 +1191,32 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("ics_"):
         idx = int(data[4:])
         tasks = context.user_data.get("tasks", [])
+        if idx >= len(tasks):
+            await query.answer("Session expired. Please send the task again.")
+            return
         task = tasks[idx]
         user_obj = get_user(chat_id)
         tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
         ics_bytes = generate_ics(task, tz_name)
         safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in task.get("title", "task"))[:40]
         filename = f"{safe_title}.ics"
+        ics_captions = {
+            "ru": "📎 Откройте файл, чтобы добавить событие в Apple Calendar",
+            "uk": "📎 Відкрийте файл, щоб додати подію в Apple Calendar",
+            "en": "📎 Open the file to add the event to Apple Calendar",
+        }
         await context.bot.send_document(
             chat_id=chat_id,
             document=io.BytesIO(ics_bytes),
             filename=filename,
-            caption="📎 Откройте файл, чтобы добавить событие в Apple Calendar"
+            caption=ics_captions.get(lang, ics_captions["en"])
         )
+        return
+    if data.startswith("set_remind_min_"):
+        mins = int(data[len("set_remind_min_"):])
+        save_user(chat_id, reminder_minutes=mins, reminder_before=mins)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(TEXTS[lang]["reminder_ask_set"].format(min=mins))
         return
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
@@ -1194,11 +1246,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             link = add_to_calendar(chat_id, task)
             added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
             await msg.edit_text(TEXTS[lang]["added"], reply_markup=added_markup)
-            user = get_user(chat_id)
+            user_fresh = get_user(chat_id)
             await query.message.reply_text(
                 TEXTS[lang]["menu_hint"],
-                reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
+                reply_markup=main_menu_keyboard(lang, user_fresh["calendar_connected"], get_active_task_count(chat_id))
             )
+            if not user_fresh["first_task_done"]:
+                save_user(chat_id, first_task_done=1)
+                await ask_reminder_minutes(query.message, chat_id, lang)
         except Exception as e:
             await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
     elif action == "save":
@@ -1215,6 +1270,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + TEXTS[lang]["task_saved"]
         )
         await query.edit_message_text(card, parse_mode="Markdown")
+        user_fresh = get_user(chat_id)
+        if not user_fresh["first_task_done"]:
+            save_user(chat_id, first_task_done=1)
+            await ask_reminder_minutes(query.message, chat_id, lang)
     elif action == "skip":
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
@@ -1289,6 +1348,57 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += TEXTS[lang]["tasks_item"].format(emoji=emoji, title=title, date=date_display)
     await update.message.reply_text(text, parse_mode="Markdown")
 
+async def mytasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        "SELECT title, quadrant, suggested_date, suggested_time, done FROM tasks WHERE chat_id=? ORDER BY id DESC LIMIT 5",
+        (chat_id,)
+    ).fetchall()
+    conn.close()
+    t = TEXTS[lang]
+    if not rows:
+        await update.message.reply_text(t["tasks_empty"])
+        return
+    lines = []
+    for title, quadrant, date, time, done in rows:
+        emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
+        status = "✅" if done else "🔲"
+        date_str = format_date(date, lang) if date else "—"
+        if time:
+            date_str += _TIME_SEP.get(lang, " ") + time
+        lines.append(f"{status} {emoji} *{title}* — {date_str}")
+    header = {"ru": "📋 *Последние 5 задач:*\n\n", "en": "📋 *Last 5 tasks:*\n\n", "uk": "📋 *Останні 5 задач:*\n\n"}
+    text = header.get(lang, header["en"]) + "\n".join(lines)
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    t = TEXTS[lang]
+    reminder_time = user["reminder_time"] if user else "08:00"
+    reminder_enabled = user["reminder_enabled"] if user else 1
+    reminder_label = t["btn_reminder"] + f" ({reminder_time})" if reminder_enabled else t["btn_reminder"] + f" ({t['reminder_disabled_text']})"
+    reminder_before = user["reminder_minutes"] if user else 30
+    before_label = t["btn_reminder_before"].format(min=reminder_before)
+    keyboard_rows = [
+        [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
+        [InlineKeyboardButton(before_label, callback_data="settings_reminder_before")],
+        [InlineKeyboardButton(t["btn_archive"], callback_data="settings_archive")],
+    ]
+    if user and user["calendar_connected"]:
+        keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
+    else:
+        keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+    keyboard_rows.append([
+        InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
+        InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")
+    ])
+    await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
+
 # ─── OAuth Web Server ─────────────────────────────────────────────────────────
 
 async def oauth_callback(request):
@@ -1331,6 +1441,8 @@ async def main():
     bot_app.add_handler(CommandHandler("timezone", timezone_command))
     bot_app.add_handler(CommandHandler("help", help_command))
     bot_app.add_handler(CommandHandler("tasks", tasks_command))
+    bot_app.add_handler(CommandHandler("mytasks", mytasks_command))
+    bot_app.add_handler(CommandHandler("settings", settings_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
@@ -1356,6 +1468,8 @@ async def main():
     await bot_app.bot.set_my_commands([
         BotCommand("start", "🏠 Главное меню"),
         BotCommand("tasks", "📋 Мои задачи"),
+        BotCommand("mytasks", "📋 Последние задачи"),
+        BotCommand("settings", "⚙️ Настройки"),
         BotCommand("timezone", "🕐 Таймзона"),
         BotCommand("connect", "📅 Подключить Calendar"),
         BotCommand("help", "❓ Помощь"),
