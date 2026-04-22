@@ -182,9 +182,15 @@ TEXTS = {
             "/timezone — изменить временную зону\n"
             "/help — эта справка"
         ),
-        "tasks_header": "📋 *Последние задачи:*\n\n",
-        "tasks_empty": "У вас пока нет сохранённых задач.",
+        "tasks_header": "📋 *Мои задачи:*\n\n",
+        "tasks_empty": "У вас пока нет предстоящих задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
+        "tasks_today": "Сегодня",
+        "tasks_tomorrow": "Завтра",
+        "tasks_more_days": "...и ещё {n} {days}",
+        "tasks_day": "день",
+        "tasks_days_2_4": "дня",
+        "tasks_days_5": "дней",
         "btn_new_task": "📝 Новая задача",
         "btn_my_tasks": "📋 Мои задачи",
         "btn_settings": "⚙️ Настройки",
@@ -265,9 +271,15 @@ TEXTS = {
             "/timezone — change timezone\n"
             "/help — this help"
         ),
-        "tasks_header": "📋 *Recent tasks:*\n\n",
-        "tasks_empty": "You have no saved tasks yet.",
+        "tasks_header": "📋 *My tasks:*\n\n",
+        "tasks_empty": "You have no upcoming tasks.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
+        "tasks_today": "Today",
+        "tasks_tomorrow": "Tomorrow",
+        "tasks_more_days": "...and {n} more {days}",
+        "tasks_day": "day",
+        "tasks_days_2_4": "days",
+        "tasks_days_5": "days",
         "btn_new_task": "📝 New task",
         "btn_my_tasks": "📋 My tasks",
         "btn_settings": "⚙️ Settings",
@@ -348,9 +360,15 @@ TEXTS = {
             "/timezone — змінити часовий пояс\n"
             "/help — ця довідка"
         ),
-        "tasks_header": "📋 *Останні задачі:*\n\n",
-        "tasks_empty": "У вас поки немає збережених задач.",
+        "tasks_header": "📋 *Мої задачі:*\n\n",
+        "tasks_empty": "У вас поки немає майбутніх задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
+        "tasks_today": "Сьогодні",
+        "tasks_tomorrow": "Завтра",
+        "tasks_more_days": "...і ще {n} {days}",
+        "tasks_day": "день",
+        "tasks_days_2_4": "дні",
+        "tasks_days_5": "днів",
         "btn_new_task": "📝 Нова задача",
         "btn_my_tasks": "📋 Мої задачі",
         "btn_settings": "⚙️ Налаштування",
@@ -788,6 +806,60 @@ def format_date(date_str: str, lang: str) -> str:
         return f"{d.day} {months[d.month - 1]} {d.year}"
     except Exception:
         return date_str
+
+def _days_word(n: int, lang: str, t: dict) -> str:
+    """Russian/Ukrainian declension for N days."""
+    if lang in ("ru", "uk"):
+        if n % 100 in range(11, 20):
+            return t["tasks_days_5"]
+        r = n % 10
+        if r == 1:
+            return t["tasks_day"]
+        if r in (2, 3, 4):
+            return t["tasks_days_2_4"]
+        return t["tasks_days_5"]
+    return t["tasks_days_5"]  # English "days"
+
+def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str) -> str:
+    """
+    rows: (title, quadrant, suggested_date, suggested_time)
+    Groups tasks by date, shows up to 3 days.
+    Returns formatted Markdown text.
+    """
+    from collections import defaultdict
+    t = TEXTS[lang]
+    time_sep = _TIME_SEP.get(lang, " ")
+
+    by_date: dict = defaultdict(list)
+    for title, quadrant, date, time in rows:
+        by_date[date].append((title, quadrant, time))
+
+    sorted_dates = sorted(by_date.keys())
+    visible_dates = sorted_dates[:3]
+    hidden_count = len(sorted_dates) - len(visible_dates)
+
+    blocks = []
+    for date in visible_dates:
+        # Day header
+        formatted = format_date(date, lang)
+        if date == today_str:
+            header = f"*{t['tasks_today']}* — {formatted}"
+        elif date == tomorrow_str:
+            header = f"*{t['tasks_tomorrow']}* — {formatted}"
+        else:
+            header = f"*{formatted}*"
+
+        lines = [header]
+        for title, quadrant, time in by_date[date]:
+            emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
+            time_str = f"{time_sep}{time}" if time else ""
+            lines.append(f"{emoji} {title}{time_str}")
+        blocks.append("\n".join(lines))
+
+    text = t["tasks_header"] + "\n\n".join(blocks)
+    if hidden_count > 0:
+        text += "\n\n" + t["tasks_more_days"].format(n=hidden_count, days=_days_word(hidden_count, lang, t))
+    return text
 
 def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
@@ -1369,60 +1441,40 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user["lang"] if user else "ru"
     await update.message.reply_text(TEXTS[lang]["help"], parse_mode="Markdown")
 
-async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
+async def _send_tasks_grouped(update, chat_id: int, lang: str):
+    """Shared logic for tasks_command and mytasks_command."""
     user = get_user(chat_id)
-    lang = user["lang"] if user else "ru"
-    conn = sqlite3.connect("users.db")
     user_tz = user["timezone"] if user else "Europe/Moscow"
     now = datetime.now(ZoneInfo(user_tz))
     today = now.strftime("%Y-%m-%d")
+    tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
+    conn = sqlite3.connect("users.db")
     rows = conn.execute(
         """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
            WHERE chat_id=?
              AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))
-           ORDER BY suggested_date ASC, suggested_time ASC LIMIT 10""",
+           ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
         (chat_id, today, today, current_time)
     ).fetchall()
     conn.close()
     if not rows:
         await update.message.reply_text(TEXTS[lang]["tasks_empty"])
         return
-    text = TEXTS[lang]["tasks_header"]
-    for title, quadrant, date, time in rows:
-        emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
-        date_display = format_date(date, lang) if date else "—"
-        if time:
-            date_display += _TIME_SEP.get(lang, " ") + time
-        text += TEXTS[lang]["tasks_item"].format(emoji=emoji, title=title, date=date_display)
+    text = build_tasks_by_day(rows, lang, today, tomorrow)
     await update.message.reply_text(text, parse_mode="Markdown")
+
+async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    await _send_tasks_grouped(update, chat_id, lang)
 
 async def mytasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
-    conn = sqlite3.connect("users.db")
-    rows = conn.execute(
-        "SELECT title, quadrant, suggested_date, suggested_time, done FROM tasks WHERE chat_id=? ORDER BY id DESC LIMIT 5",
-        (chat_id,)
-    ).fetchall()
-    conn.close()
-    t = TEXTS[lang]
-    if not rows:
-        await update.message.reply_text(t["tasks_empty"])
-        return
-    lines = []
-    for title, quadrant, date, time, done in rows:
-        emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
-        status = "✅" if done else "🔲"
-        date_str = format_date(date, lang) if date else "—"
-        if time:
-            date_str += _TIME_SEP.get(lang, " ") + time
-        lines.append(f"{status} {emoji} *{title}* — {date_str}")
-    header = {"ru": "📋 *Последние 5 задач:*\n\n", "en": "📋 *Last 5 tasks:*\n\n", "uk": "📋 *Останні 5 задач:*\n\n"}
-    text = header.get(lang, header["en"]) + "\n".join(lines)
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await _send_tasks_grouped(update, chat_id, lang)
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
