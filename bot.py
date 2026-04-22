@@ -1376,31 +1376,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
             link = add_to_calendar(chat_id, task)
-            emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-            date_display = format_date(task["suggested_date"], lang)
-            time_sep = _TIME_SEP.get(lang, " ")
+            await msg.delete()
             success_texts = {
-                "ru": "✅ Задача сохранена и добавлена в Google Calendar",
-                "en": "✅ Task saved and added to Google Calendar",
-                "uk": "✅ Задачу збережено та додано до Google Calendar",
+                "ru": f"✅ *{task['title']}* сохранена в задачах и добавлена в Google Calendar",
+                "en": f"✅ *{task['title']}* saved to tasks and added to Google Calendar",
+                "uk": f"✅ *{task['title']}* збережено у задачах та додано до Google Calendar",
             }
-            card = (
-                f"{emoji} *{task['title']}*\n"
-                f"📅 {date_display}"
-                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n\n"
-                + success_texts.get(lang, success_texts["ru"])
-            )
             added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
-            await msg.edit_text(card, parse_mode="Markdown", reply_markup=added_markup)
+            await query.message.reply_text(
+                success_texts.get(lang, success_texts["ru"]),
+                parse_mode="Markdown",
+                reply_markup=added_markup
+            )
             user_fresh = get_user(chat_id)
             if not user_fresh["first_task_done"]:
                 save_user(chat_id, first_task_done=1)
                 await ask_reminder_minutes(query.message, chat_id, lang)
         except Exception as e:
             error_texts = {
-                "ru": f"❌ Не удалось добавить в Google Calendar: {str(e)}\n\nЗадача сохранена в списке задач.",
-                "en": f"❌ Failed to add to Google Calendar: {str(e)}\n\nTask saved to your task list.",
-                "uk": f"❌ Не вдалося додати до Google Calendar: {str(e)}\n\nЗадачу збережено у списку задач.",
+                "ru": f"❌ Не удалось добавить в Google Calendar.\n\nОшибка: {str(e)}\n\nЗадача сохранена в списке задач.",
+                "en": f"❌ Failed to add to Google Calendar.\n\nError: {str(e)}\n\nTask saved to your task list.",
+                "uk": f"❌ Не вдалося додати до Google Calendar.\n\nПомилка: {str(e)}\n\nЗадачу збережено у списку задач.",
             }
             save_task_to_db(chat_id, task)
             await msg.edit_text(error_texts.get(lang, error_texts["ru"]))
