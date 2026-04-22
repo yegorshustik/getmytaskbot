@@ -1354,6 +1354,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
     idx_int = int(idx)
+    # If tasks not in context (e.g. after OAuth redirect), try to restore from DB
+    if idx_int >= len(tasks):
+        pending_json = user.get("pending_task_json") if user else None
+        if pending_json:
+            try:
+                tasks = json.loads(pending_json)
+                context.user_data["tasks"] = tasks
+            except Exception:
+                pass
     if idx_int >= len(tasks):
         await query.answer("Session expired. Please send the task again.")
         return
@@ -1559,6 +1568,7 @@ async def oauth_callback(request):
                 )
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
+                    [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")],
                     [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
                      InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
                 ])
