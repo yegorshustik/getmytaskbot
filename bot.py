@@ -1,8 +1,11 @@
 import os
+import io
+import uuid
 import json
 import logging
 import sqlite3
 import asyncio
+import tempfile
 from datetime import datetime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
@@ -121,40 +124,42 @@ def mark_reminder_sent(chat_id, event_id, remind_at):
 TEXTS = {
     "ru": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
-        "lang_set": "Язык установлен: Русский 🇷🇺\n\nПросто напиши или надиктуй голосовое — я извлеку задачи и расставлю их по матрице Эйзенхауэра.",
+        "lang_set": "Язык установлен: Русский 🇷🇺\n\nПросто напишите или надиктуйте голосовое — я извлеку задачи и расставлю их по матрице Эйзенхауэра.",
         "processing": "Обрабатываю...",
         "transcribing": "Транскрибирую голосовое...",
         "recognized": "Распознал: ",
-        "too_long": "⚠️ Голосовое слишком длинное (больше 60 сек). Запиши несколько коротких сообщений.",
-        "too_short": "⚠️ Сообщение слишком короткое. Попробуй записать подробнее.",
-        "no_text": "⚠️ Не удалось распознать речь. Проверь качество записи и попробуй снова.",
-        "no_tasks": "⚠️ Не нашёл задач в сообщении. Опиши что нужно сделать.",
-        "add_calendar": "✅ Добавить в Calendar",
+        "too_long": "⚠️ Голосовое слишком длинное (больше 60 сек). Запишите несколько коротких сообщений.",
+        "too_short": "⚠️ Сообщение слишком короткое. Попробуйте записать подробнее.",
+        "no_text": "⚠️ Не удалось распознать речь. Проверьте качество записи и попробуйте снова.",
+        "no_tasks": "⚠️ Не нашёл задач в сообщении. Опишите что нужно сделать.",
+        "add_calendar": "📅 В Calendar",
+        "save": "✅ Сохранить",
         "skip": "❌ Пропустить",
         "adding": "⏳ Добавляю в Calendar...",
         "added": "✅ Добавлено в Calendar",
         "added_btn": "📅 Открыть в Calendar",
-        "skipped": "⏭ Пропустили: ",
+        "task_saved": "✅ _Задача сохранена_",
+        "task_skipped": "❌ _Задача не сохранена_",
         "calendar_error": "Ошибка Calendar: ",
         "error": "Ошибка: ",
-        "offer_calendar": "📅 Хочешь добавлять задачи в Google Calendar и получать напоминания?",
-        "connect_calendar": "🔗 Подключить Calendar",
+        "offer_calendar": "📅 Хотите добавлять задачи в Google Calendar и получать напоминания?",
+        "connect_calendar": "📅 Подключить календарь",
         "skip_calendar": "➡️ Пропустить",
-        "connect_link": "🔗 Подключи Google Calendar:",
-        "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать тебе о задачах.",
-        "calendar_not_connected": "❌ Календарь не подключён. Используй /connect чтобы подключить.",
+        "connect_link": "🔗 Подключите Google Calendar:",
+        "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать вам о задачах.",
+        "calendar_not_connected": "❌ Календарь не подключён. Используйте /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
-        "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапиши или надиктуй другое время для задачи *{title}*:",
-        "correction_unclear": "⚠️ Не понял новое время. Попробуй написать например: «в 11 утра» или «завтра в 15:00»",
+        "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапишите или надиктуйте другое время для задачи *{title}*:",
+        "correction_unclear": "⚠️ Не понял новое время. Попробуйте написать например: «в 11 утра» или «завтра в 15:00»",
         "rescheduled": "✅ Время обновлено: {date} в {time}",
-        "timezone_current": "🕐 Твоя текущая временная зона: *{tz}*\n\nВыбери из списка или введи вручную:",
+        "timezone_current": "🕐 Ваша текущая временная зона: *{tz}*\n\nВыберите из списка или введите вручную:",
         "timezone_set": "✅ Временная зона установлена: *{tz}*",
         "timezone_manual": "✍️ Ввести вручную",
-        "timezone_prompt": "Введи название временной зоны, например:\n`Europe/Moscow`, `Asia/Almaty`, `America/New_York`",
-        "timezone_invalid": "❌ Не удалось распознать временную зону. Попробуй формат: `Europe/Moscow`",
+        "timezone_prompt": "Введите название временной зоны, например:\n`Europe/Moscow`, `Asia/Almaty`, `America/New_York`",
+        "timezone_invalid": "❌ Не удалось распознать временную зону. Попробуйте формат: `Europe/Moscow`",
         "help": (
             "📋 *Что я умею:*\n\n"
-            "• Напиши или надиктуй голосовое — извлеку задачи и расставлю по матрице Эйзенхауэра\n"
+            "• Напишите или надиктуйте голосовое — извлеку задачи и расставлю по матрице Эйзенхауэра\n"
             "• Предложу дату и время для каждой задачи\n"
             "• Добавлю задачи в Google Calendar\n"
             "• Напомню о событиях за 30 минут\n\n"
@@ -166,7 +171,7 @@ TEXTS = {
             "/help — эта справка"
         ),
         "tasks_header": "📋 *Последние задачи:*\n\n",
-        "tasks_empty": "У тебя пока нет сохранённых задач.",
+        "tasks_empty": "У вас пока нет сохранённых задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "btn_new_task": "📝 Новая задача",
         "btn_my_tasks": "📋 Мои задачи",
@@ -182,10 +187,10 @@ TEXTS = {
         "reminder_disabled_text": "🔕 Отключено",
         "reminder_set": "✅ Напоминание установлено на {time}",
         "reminder_off": "🔕 Напоминания отключены.",
-        "morning_digest": "☀️ *Доброе утро!* Вот твои задачи на сегодня:\n\n{tasks}",
+        "morning_digest": "☀️ *Доброе утро!* Вот ваши задачи на сегодня:\n\n{tasks}",
         "morning_digest_future": "☀️ *Доброе утро!* Задач на сегодня нет.\n\nБлижайшие дела:\n\n{tasks}",
-        "morning_digest_empty": "☀️ *Доброе утро!* У тебя нет запланированных задач.",
-        "morning_first_offer": "\n\n_Напоминание приходит в {time}. Хочешь изменить время?_",
+        "morning_digest_empty": "☀️ *Доброе утро!* У вас нет запланированных задач.",
+        "morning_first_offer": "\n\n_Напоминание приходит в {time}. Хотите изменить время?_",
         "btn_reminder_change": "🕐 Изменить время",
         "btn_reminder_disable": "🔕 Отключить",
         "btn_archive": "🗂 Архив задач",
@@ -195,7 +200,7 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
         "task_reminder": "⏰ Напоминание: *{title}* начнётся в {time}",
-        "menu_hint": "Надиктуй или опиши задачу:",
+        "menu_hint": "Надиктуйте или опишите задачу:",
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -207,16 +212,18 @@ TEXTS = {
         "too_short": "⚠️ Message is too short. Try recording with more detail.",
         "no_text": "⚠️ Could not recognize speech. Check audio quality and try again.",
         "no_tasks": "⚠️ No tasks found in the message. Describe what needs to be done.",
-        "add_calendar": "✅ Add to Calendar",
+        "add_calendar": "📅 To Calendar",
+        "save": "✅ Save",
         "skip": "❌ Skip",
         "adding": "⏳ Adding to Calendar...",
         "added": "✅ Added to Calendar",
         "added_btn": "📅 Open in Calendar",
-        "skipped": "⏭ Skipped: ",
+        "task_saved": "✅ _Task saved_",
+        "task_skipped": "❌ _Task not saved_",
         "calendar_error": "Calendar error: ",
         "error": "Error: ",
         "offer_calendar": "📅 Want to add tasks to Google Calendar and get reminders?",
-        "connect_calendar": "🔗 Connect Calendar",
+        "connect_calendar": "📅 Connect calendar",
         "skip_calendar": "➡️ Skip",
         "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
@@ -277,40 +284,42 @@ TEXTS = {
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
-        "lang_set": "Мову встановлено: Українська 🇺🇦\n\nПросто напиши або надиктуй голосове — я витягну задачі та розставлю їх по матриці Ейзенхауера.",
+        "lang_set": "Мову встановлено: Українська 🇺🇦\n\nПросто напишіть або надиктуйте голосове — я витягну задачі та розставлю їх по матриці Ейзенхауера.",
         "processing": "Обробляю...",
         "transcribing": "Транскрибую голосове...",
         "recognized": "Розпізнав: ",
-        "too_long": "⚠️ Голосове занадто довге (більше 60 сек). Запиши кілька коротких повідомлень.",
-        "too_short": "⚠️ Повідомлення занадто коротке. Спробуй записати детальніше.",
-        "no_text": "⚠️ Не вдалося розпізнати мову. Перевір якість запису і спробуй знову.",
-        "no_tasks": "⚠️ Не знайшов задач у повідомленні. Опиши що потрібно зробити.",
-        "add_calendar": "✅ Додати до Calendar",
+        "too_long": "⚠️ Голосове занадто довге (більше 60 сек). Запишіть кілька коротких повідомлень.",
+        "too_short": "⚠️ Повідомлення занадто коротке. Спробуйте записати детальніше.",
+        "no_text": "⚠️ Не вдалося розпізнати мову. Перевірте якість запису і спробуйте знову.",
+        "no_tasks": "⚠️ Не знайшов задач у повідомленні. Опишіть що потрібно зробити.",
+        "add_calendar": "📅 До Calendar",
+        "save": "✅ Зберегти",
         "skip": "❌ Пропустити",
         "adding": "⏳ Додаю до Calendar...",
         "added": "✅ Додано до Calendar",
         "added_btn": "📅 Відкрити в Calendar",
-        "skipped": "⏭ Пропустили: ",
+        "task_saved": "✅ _Задачу збережено_",
+        "task_skipped": "❌ _Задачу не збережено_",
         "calendar_error": "Помилка Calendar: ",
         "error": "Помилка: ",
-        "offer_calendar": "📅 Хочеш додавати задачі до Google Calendar і отримувати нагадування?",
-        "connect_calendar": "🔗 Підключити Calendar",
+        "offer_calendar": "📅 Хочете додавати задачі до Google Calendar і отримувати нагадування?",
+        "connect_calendar": "📅 Підключити календар",
         "skip_calendar": "➡️ Пропустити",
-        "connect_link": "🔗 Підключи Google Calendar:",
-        "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму тобі про задачі.",
-        "calendar_not_connected": "❌ Календар не підключено. Використай /connect щоб підключити.",
+        "connect_link": "🔗 Підключіть Google Calendar:",
+        "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму вам про задачі.",
+        "calendar_not_connected": "❌ Календар не підключено. Використайте /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
-        "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапиши або надиктуй інший час для задачі *{title}*:",
-        "correction_unclear": "⚠️ Не зрозумів новий час. Спробуй написати, наприклад: «об 11 ранку» або «завтра о 15:00»",
+        "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапишіть або надиктуйте інший час для задачі *{title}*:",
+        "correction_unclear": "⚠️ Не зрозумів новий час. Спробуйте написати, наприклад: «об 11 ранку» або «завтра о 15:00»",
         "rescheduled": "✅ Час оновлено: {date} о {time}",
-        "timezone_current": "🕐 Твій поточний часовий пояс: *{tz}*\n\nОбери зі списку або введи вручну:",
+        "timezone_current": "🕐 Ваш поточний часовий пояс: *{tz}*\n\nОберіть зі списку або введіть вручну:",
         "timezone_set": "✅ Часовий пояс встановлено: *{tz}*",
         "timezone_manual": "✍️ Ввести вручну",
-        "timezone_prompt": "Введи назву часового поясу, наприклад:\n`Europe/Kyiv`, `Asia/Almaty`, `America/New_York`",
-        "timezone_invalid": "❌ Не вдалося розпізнати часовий пояс. Спробуй формат: `Europe/Kyiv`",
+        "timezone_prompt": "Введіть назву часового поясу, наприклад:\n`Europe/Kyiv`, `Asia/Almaty`, `America/New_York`",
+        "timezone_invalid": "❌ Не вдалося розпізнати часовий пояс. Спробуйте формат: `Europe/Kyiv`",
         "help": (
             "📋 *Що я вмію:*\n\n"
-            "• Напиши або надиктуй голосове — витягну задачі та розставлю по матриці Ейзенхауера\n"
+            "• Напишіть або надиктуйте голосове — витягну задачі та розставлю по матриці Ейзенхауера\n"
             "• Запропоную дату і час для кожної задачі\n"
             "• Додам задачі до Google Calendar\n"
             "• Нагадаю про події за 30 хвилин\n\n"
@@ -322,7 +331,7 @@ TEXTS = {
             "/help — ця довідка"
         ),
         "tasks_header": "📋 *Останні задачі:*\n\n",
-        "tasks_empty": "У тебе поки немає збережених задач.",
+        "tasks_empty": "У вас поки немає збережених задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "btn_new_task": "📝 Нова задача",
         "btn_my_tasks": "📋 Мої задачі",
@@ -338,10 +347,10 @@ TEXTS = {
         "reminder_disabled_text": "🔕 Вимкнено",
         "reminder_set": "✅ Нагадування встановлено на {time}",
         "reminder_off": "🔕 Нагадування вимкнено.",
-        "morning_digest": "☀️ *Доброго ранку!* Ось твої задачі на сьогодні:\n\n{tasks}",
+        "morning_digest": "☀️ *Доброго ранку!* Ось ваші задачі на сьогодні:\n\n{tasks}",
         "morning_digest_future": "☀️ *Доброго ранку!* Задач на сьогодні немає.\n\nНайближчі справи:\n\n{tasks}",
-        "morning_digest_empty": "☀️ *Доброго ранку!* У тебе немає запланованих задач.",
-        "morning_first_offer": "\n\n_Нагадування приходить о {time}. Бажаєш змінити час?_",
+        "morning_digest_empty": "☀️ *Доброго ранку!* У вас немає запланованих задач.",
+        "morning_first_offer": "\n\n_Нагадування приходить о {time}. Бажаєте змінити час?_",
         "btn_reminder_change": "🕐 Змінити час",
         "btn_reminder_disable": "🔕 Вимкнути",
         "btn_archive": "🗂 Архів задач",
@@ -351,7 +360,7 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
         "task_reminder": "⏰ Нагадування: *{title}* починається о {time}",
-        "menu_hint": "Надиктуй або опиши задачу:",
+        "menu_hint": "Надиктуйте або опишіть задачу:",
     },
 }
 
@@ -384,15 +393,15 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     current_time = now.strftime("%H:%M")
     prompts = {
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
-Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если пользователь указал время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском).
+Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
-For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if user specified a time or relative time like "in 15 minutes" — calculate from {current_time}, otherwise null), reason (in English).
+For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
-Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо користувач вказав час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською).
+Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
@@ -444,15 +453,13 @@ def add_to_calendar(chat_id, task):
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
     time = task.get("suggested_time")
     if time:
-        from datetime import date as _date, timedelta as _td
         start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
-        end_dt = start_dt + _td(minutes=30)
+        end_dt = start_dt + timedelta(minutes=30)
         end_date = end_dt.strftime("%Y-%m-%d")
         start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
         end = {"dateTime": f"{end_date}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
     else:
-        from datetime import date as _date, timedelta as _td
-        next_day = (_date.fromisoformat(date) + _td(days=1)).isoformat()
+        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
         start = {"date": date}
         end = {"date": next_day}
     event = {
@@ -462,14 +469,17 @@ def add_to_calendar(chat_id, task):
         "end": end,
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
+    save_task_to_db(chat_id, task)
+    return result.get("htmlLink")
+
+def save_task_to_db(chat_id, task):
     conn = sqlite3.connect("users.db")
     conn.execute(
         "INSERT INTO tasks (chat_id, title, quadrant, suggested_date, suggested_time) VALUES (?,?,?,?,?)",
-        (chat_id, task["title"], task.get("quadrant",""), date, time)
+        (chat_id, task["title"], task.get("quadrant",""), task.get("suggested_date",""), task.get("suggested_time",""))
     )
     conn.commit()
     conn.close()
-    return result.get("htmlLink")
 
 # ─── Time correction parser ───────────────────────────────────────────────────
 
@@ -553,7 +563,7 @@ async def check_reminders():
                 for reminder in overrides:
                     minutes_before = reminder.get("minutes", 30)
                     remind_at = start_dt - timedelta(minutes=minutes_before)
-                    remind_at_utc = remind_at.astimezone(_utc).replace(tzinfo=None)
+                    remind_at_utc = remind_at.astimezone(_utc.utc).replace(tzinfo=None)
                     diff = abs((remind_at_utc - now).total_seconds())
                     if diff <= 150:
                         remind_key = remind_at_utc.strftime("%Y-%m-%dT%H:%M")
@@ -575,7 +585,6 @@ async def check_reminders():
 async def check_task_reminders():
     conn = sqlite3.connect("users.db")
     users = conn.execute("SELECT chat_id, lang, timezone, reminder_before FROM users WHERE reminder_before > 0 AND lang IS NOT NULL").fetchall()
-    conn.close()
     for chat_id, lang, tz_name, reminder_before in users:
         try:
             tz = ZoneInfo(tz_name or "Europe/Moscow")
@@ -583,12 +592,10 @@ async def check_task_reminders():
             remind_at = now + timedelta(minutes=reminder_before)
             target_date = remind_at.strftime("%Y-%m-%d")
             target_time = remind_at.strftime("%H:%M")
-            db = sqlite3.connect("users.db")
-            tasks = db.execute(
+            tasks = conn.execute(
                 "SELECT id, title, suggested_date, suggested_time FROM tasks WHERE chat_id=? AND suggested_date=? AND suggested_time=?",
                 (chat_id, target_date, target_time)
             ).fetchall()
-            db.close()
             lang = lang or "ru"
             for task_id, title, date, time in tasks:
                 remind_key = f"task_{task_id}"
@@ -602,6 +609,7 @@ async def check_task_reminders():
                 mark_reminder_sent(chat_id, remind_key, target_time)
         except Exception as e:
             logger.error(f"Task reminder error for {chat_id}: {e}")
+    conn.close()
 
 _morning_sent_today = {}  # chat_id -> date string
 
@@ -725,6 +733,44 @@ def format_date(date_str: str, lang: str) -> str:
     except Exception:
         return date_str
 
+def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
+    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
+    time = task.get("suggested_time")
+    title = task.get("title", "Task").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    description = task.get("reason", "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    now_utc = datetime.now(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
+    uid = str(uuid.uuid4())
+
+    if time:
+        tz = ZoneInfo(tz_name)
+        dt_start = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M").replace(tzinfo=tz)
+        dt_end = dt_start + timedelta(minutes=30)
+        fmt = "%Y%m%dT%H%M%S"
+        dtstart_line = f"DTSTART;TZID={tz_name}:{dt_start.strftime(fmt)}"
+        dtend_line = f"DTEND;TZID={tz_name}:{dt_end.strftime(fmt)}"
+    else:
+        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y%m%d")
+        dtstart_line = f"DTSTART;VALUE=DATE:{date.replace('-', '')}"
+        dtend_line = f"DTEND;VALUE=DATE:{next_day}"
+
+    ics = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//Get My Task//EN\r\n"
+        "CALSCALE:GREGORIAN\r\n"
+        "METHOD:PUBLISH\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"UID:{uid}\r\n"
+        f"DTSTAMP:{now_utc}\r\n"
+        f"{dtstart_line}\r\n"
+        f"{dtend_line}\r\n"
+        f"SUMMARY:{title}\r\n"
+        f"DESCRIPTION:{description}\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    return ics.encode("utf-8")
+
 async def show_tasks(update, chat_id, tasks, lang):
     user = get_user(chat_id)
     for i, task in enumerate(tasks):
@@ -738,15 +784,23 @@ async def show_tasks(update, chat_id, tasks, lang):
             + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
             f"_{task['reason']}_"
         )
+        save_skip_row = [
+            InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
+            InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
+        ]
+        apple_row = [InlineKeyboardButton("📎 Apple Calendar", callback_data=f"ics_{i}")]
         if user and user["calendar_connected"]:
-            keyboard = InlineKeyboardMarkup([[
-                InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}"),
-                InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")
-            ]])
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
+                apple_row,
+                save_skip_row,
+            ])
         else:
-            keyboard = InlineKeyboardMarkup([[
-                InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")
-            ]])
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS[lang]["connect_calendar"], callback_data="connect_calendar")],
+                apple_row,
+                save_skip_row,
+            ])
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def offer_calendar(update, chat_id, lang):
@@ -807,11 +861,6 @@ async def process_and_show(update, context, text, chat_id, lang):
         return
     context.user_data["tasks"] = tasks
     await show_tasks(update, chat_id, tasks, lang)
-    user = get_user(chat_id)
-    if not user["first_task_done"]:
-        save_user(chat_id, first_task_done=1)
-        if not user["calendar_connected"]:
-            await offer_calendar(update, chat_id, lang)
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -831,7 +880,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
         InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
     ]])
-    await update.message.reply_text(TEXTS["ru"]["choose_lang"], reply_markup=keyboard)
+    await update.message.reply_text(
+        "👋 Welcome to Get My Task!\n\n"
+        "I turn your voice notes and text into structured tasks — classified by priority, scheduled, and synced with your Google Calendar.\n\n"
+        "To get started, please choose your language:",
+        reply_markup=keyboard
+    )
 
 async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -876,8 +930,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reminder_before = user["reminder_before"] if user else 30
         before_label = t["btn_reminder_before"].format(min=reminder_before)
         keyboard_rows = [
-            [InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
-             InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")],
             [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
             [InlineKeyboardButton(before_label, callback_data="settings_reminder_before")],
             [InlineKeyboardButton(t["btn_archive"], callback_data="settings_archive")],
@@ -886,6 +938,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
         else:
             keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+        keyboard_rows.append([InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
+                               InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")])
         await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
         return
     if user_text == t["btn_help"]:
@@ -925,7 +979,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
     lang = user["lang"]
-    voice = update.message.voice
+    voice = update.message.voice or update.message.audio
     if voice.duration > 60:
         await update.message.reply_text(TEXTS[lang]["too_long"])
         return
@@ -934,11 +988,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(TEXTS[lang]["transcribing"])
     try:
-        file = await context.bot.get_file(voice.file_id)
-        await file.download_to_drive("voice.ogg")
-        with open("voice.ogg", "rb") as f:
-            transcription = groq_client.audio.transcriptions.create(
-                model="whisper-large-v3", file=f)
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            file = await context.bot.get_file(voice.file_id)
+            await file.download_to_drive(tmp_path)
+            with open(tmp_path, "rb") as f:
+                transcription = groq_client.audio.transcriptions.create(
+                    model="whisper-large-v3", file=f)
+        finally:
+            os.unlink(tmp_path)
         text = transcription.text.strip()
         if not text or len(text) < 5:
             await update.message.reply_text(TEXTS[lang]["no_text"])
@@ -1091,9 +1150,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 TEXTS[lang]["timezone_set"].format(tz=tz_name), parse_mode="Markdown"
             )
         return
+    if data.startswith("ics_"):
+        idx = int(data[4:])
+        tasks = context.user_data.get("tasks", [])
+        task = tasks[idx]
+        user_obj = get_user(chat_id)
+        tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
+        ics_bytes = generate_ics(task, tz_name)
+        safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in task.get("title", "task"))[:40]
+        filename = f"{safe_title}.ics"
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=io.BytesIO(ics_bytes),
+            filename=filename,
+            caption="📎 Откройте файл, чтобы добавить событие в Apple Calendar"
+        )
+        return
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
-    task = tasks[int(idx)]
+    idx_int = int(idx)
+    if idx_int >= len(tasks):
+        await query.answer("Session expired. Please send the task again.")
+        return
+    task = tasks[idx_int]
     if action == "add":
         await query.edit_message_reply_markup(reply_markup=None)
         service = get_calendar_service_for_user(chat_id)
@@ -1122,9 +1201,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
+    elif action == "save":
+        save_task_to_db(chat_id, task)
+        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
+        date_display = format_date(task["suggested_date"], lang)
+        time_sep = _TIME_SEP.get(lang, " ")
+        card = (
+            f"{emoji} *{task['title']}*\n"
+            f"{task['quadrant']} — {task['quadrant_name']}\n"
+            f"📅 {date_display}"
+            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+            f"_{task['reason']}_\n\n"
+            + TEXTS[lang]["task_saved"]
+        )
+        await query.edit_message_text(card, parse_mode="Markdown")
     elif action == "skip":
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["skipped"] + task["title"])
+        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
+        date_display = format_date(task["suggested_date"], lang)
+        time_sep = _TIME_SEP.get(lang, " ")
+        card = (
+            f"{emoji} *{task['title']}*\n"
+            f"{task['quadrant']} — {task['quadrant_name']}\n"
+            f"📅 {date_display}"
+            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+            f"_{task['reason']}_\n\n"
+            + TEXTS[lang]["task_skipped"]
+        )
+        await query.edit_message_text(card, parse_mode="Markdown")
 
 async def show_timezone_menu(message, chat_id, lang):
     user = get_user(chat_id)
@@ -1162,7 +1265,7 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
     conn = sqlite3.connect("users.db")
-    user_tz = get_user(chat_id)["timezone"] if get_user(chat_id) else "Europe/Moscow"
+    user_tz = user["timezone"] if user else "Europe/Moscow"
     now = datetime.now(ZoneInfo(user_tz))
     today = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
@@ -1230,11 +1333,14 @@ async def main():
     bot_app.add_handler(CommandHandler("tasks", tasks_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
     bot_app.add_handler(CallbackQueryHandler(handle_callback))
     async def log_all(update, context):
         msg = update.message
         if msg:
-            logger.info(f"INCOMING: voice={bool(msg.voice)}, audio={bool(msg.audio)}, text={repr(msg.text)}, video_note={bool(msg.video_note)}, attachment={msg.effective_attachment}")
+            logger.info(f"INCOMING: voice={bool(msg.voice)}, audio={bool(msg.audio)}, text={repr(msg.text)}, video_note={bool(msg.video_note)}, update_id={update.update_id}")
+        else:
+            logger.info(f"INCOMING non-message update: {update}")
     bot_app.add_handler(MessageHandler(filters.ALL, log_all), group=-1)
     async def error_handler(update, context):
         logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
@@ -1254,7 +1360,7 @@ async def main():
         BotCommand("connect", "📅 Подключить Calendar"),
         BotCommand("help", "❓ Помощь"),
     ])
-    await bot_app.updater.start_polling(allowed_updates=["message", "callback_query"])
+    await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
     print("Бот запущен...")
     await asyncio.Event().wait()
 
