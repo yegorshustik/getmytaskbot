@@ -1419,18 +1419,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user(chat_id, first_task_done=1)
             await ask_reminder_minutes(query.message, chat_id, lang)
     elif action == "skip":
-        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-        date_display = format_date(task["suggested_date"], lang)
-        time_sep = _TIME_SEP.get(lang, " ")
-        card = (
-            f"{emoji} *{task['title']}*\n"
-            f"{task['quadrant']} — {task['quadrant_name']}\n"
-            f"📅 {date_display}"
-            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-            f"_{task['reason']}_\n\n"
-            + TEXTS[lang]["task_skipped"]
-        )
-        await query.edit_message_text(card, parse_mode="Markdown")
+        await query.message.delete()
 
 async def show_timezone_menu(message, chat_id, lang):
     user = get_user(chat_id)
