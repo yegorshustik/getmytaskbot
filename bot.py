@@ -836,7 +836,7 @@ def _days_word(n: int, lang: str, t: dict) -> str:
 
 def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str) -> str:
     """
-    rows: (title, quadrant, suggested_date, suggested_time)
+    rows: (title, quadrant, suggested_date, suggested_time, done)
     Groups tasks by date, shows up to 3 days.
     Returns formatted Markdown text.
     """
@@ -845,8 +845,8 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str) -> st
     time_sep = _TIME_SEP.get(lang, " ")
 
     by_date: dict = defaultdict(list)
-    for title, quadrant, date, time in rows:
-        by_date[date].append((title, quadrant, time))
+    for title, quadrant, date, time, done in rows:
+        by_date[date].append((title, quadrant, time, done))
 
     sorted_dates = sorted(by_date.keys())
     visible_dates = sorted_dates[:3]
@@ -854,7 +854,6 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str) -> st
 
     blocks = []
     for date in visible_dates:
-        # Day header
         formatted = format_date(date, lang)
         if date == today_str:
             header = f"*{t['tasks_today']}* — {formatted}"
@@ -864,10 +863,10 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str) -> st
             header = f"*{formatted}*"
 
         lines = [header]
-        for title, quadrant, time in by_date[date]:
-            emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
+        for title, quadrant, time, done in by_date[date]:
+            icon = "✅" if done else QUADRANT_EMOJI.get(quadrant, "⚪")
             time_str = f"{time_sep}{time}" if time else ""
-            lines.append(f"{emoji} {title}{time_str}")
+            lines.append(f"{icon} {title}{time_str}")
         blocks.append("\n".join(lines))
 
     text = t["tasks_header"] + "\n\n".join(blocks)
@@ -1465,7 +1464,7 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
     # Show all tasks from today onwards (today = active even if time passed).
     # Archive is yesterday and before.
     rows = conn.execute(
-        """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
+        """SELECT title, quadrant, suggested_date, suggested_time, done FROM tasks
            WHERE chat_id=? AND suggested_date >= ?
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
         (chat_id, today)
