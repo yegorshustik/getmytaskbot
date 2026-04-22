@@ -417,10 +417,8 @@ def get_active_task_count(chat_id):
 def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
     tasks_label = t["btn_my_tasks"] + (f" ({task_count})" if task_count > 0 else "")
-    cal_btn = KeyboardButton(t["btn_view_calendar"]) if calendar_connected else KeyboardButton(t["btn_connect"])
     row1 = [KeyboardButton(tasks_label), KeyboardButton(t["btn_settings"])]
-    row2 = [cal_btn]
-    return ReplyKeyboardMarkup([row1, row2], resize_keyboard=True)
+    return ReplyKeyboardMarkup([row1], resize_keyboard=True)
 
 def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     now = datetime.now(ZoneInfo(tz_name))
@@ -932,18 +930,10 @@ async def show_tasks(update, chat_id, tasks, lang):
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
         apple_row = [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")]
-        if user and user["calendar_connected"]:
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
-                apple_row,
-                save_skip_row,
-            ])
-        else:
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(TEXTS[lang]["connect_calendar"], callback_data="connect_calendar")],
-                apple_row,
-                save_skip_row,
-            ])
+        keyboard = InlineKeyboardMarkup([
+            apple_row,
+            save_skip_row,
+        ])
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def offer_calendar(update, chat_id, lang):
@@ -1122,14 +1112,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_text == t["btn_connect"]:
         await connect_command(update, context)
-        return
-    if user_text == t["btn_view_calendar"]:
-        await update.message.reply_text(
-            t["btn_view_calendar"],
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("📅 Google Calendar", url="https://calendar.google.com/calendar/r")
-            ]])
-        )
         return
     if "pending_task" in context.user_data:
         if len(user_text) < 3:
@@ -1393,10 +1375,34 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
     elif action == "save":
-        save_task_to_db(chat_id, task)
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
         time_sep = _TIME_SEP.get(lang, " ")
+        user_fresh = get_user(chat_id)
+        calendar_link = None
+        # If calendar connected — add to Google Calendar (also saves to DB)
+        if user_fresh and user_fresh["calendar_connected"]:
+            service = get_calendar_service_for_user(chat_id)
+            if service:
+                user_tz = user_fresh["timezone"] if user_fresh else "Europe/Moscow"
+                conflicts = check_conflicts(service, task["suggested_date"], task.get("suggested_time"), user_tz)
+                if conflicts:
+                    conflict_title = conflicts[0].get("summary", "—")
+                    context.user_data["pending_task"] = task
+                    await query.edit_message_reply_markup(reply_markup=None)
+                    await query.message.reply_text(
+                        TEXTS[lang]["conflict_found"].format(event=conflict_title, title=task["title"]),
+                        parse_mode="Markdown"
+                    )
+                    return
+                try:
+                    calendar_link = add_to_calendar(chat_id, task)
+                except Exception:
+                    save_task_to_db(chat_id, task)
+            else:
+                save_task_to_db(chat_id, task)
+        else:
+            save_task_to_db(chat_id, task)
         card = (
             f"{emoji} *{task['title']}*\n"
             f"{task['quadrant']} — {task['quadrant_name']}\n"
@@ -1404,8 +1410,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
             f"_{task['reason']}_\n\n"
             + TEXTS[lang]["task_saved"]
+            + (" 📅" if calendar_link else "")
         )
-        await query.edit_message_text(card, parse_mode="Markdown")
+        added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=calendar_link)]]) if calendar_link else None
+        await query.edit_message_text(card, parse_mode="Markdown", reply_markup=added_markup)
         user_fresh = get_user(chat_id)
         if not user_fresh["first_task_done"]:
             save_user(chat_id, first_task_done=1)
