@@ -390,9 +390,11 @@ def get_active_task_count(chat_id):
     tz_name = user["timezone"] if user else "Europe/Moscow"
     now = datetime.now(ZoneInfo(tz_name))
     today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
     count = conn.execute(
-        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date >= ?",
-        (chat_id, today)
+        """SELECT COUNT(*) FROM tasks WHERE chat_id=?
+           AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))""",
+        (chat_id, today, today, current_time)
     ).fetchone()[0]
     conn.close()
     return count
@@ -1379,9 +1381,9 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = conn.execute(
         """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
            WHERE chat_id=?
-             AND suggested_date >= ?
+             AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 10""",
-        (chat_id, today)
+        (chat_id, today, today, current_time)
     ).fetchall()
     conn.close()
     if not rows:
