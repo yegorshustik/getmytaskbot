@@ -1387,7 +1387,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
-            link = add_to_calendar(chat_id, task)
+            link = add_to_calendar(chat_id, task)  # saves to DB internally
             await msg.delete()
             success_texts = {
                 "ru": f"✅ *{task['title']}* сохранена в задачах и добавлена в Google Calendar",
@@ -1405,13 +1405,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save_user(chat_id, first_task_done=1)
                 await ask_reminder_minutes(query.message, chat_id, lang)
         except Exception as e:
+            logger.error(f"add_to_calendar error for {chat_id}: {e}", exc_info=True)
             error_texts = {
-                "ru": f"❌ Не удалось добавить в Google Calendar.\n\nОшибка: {str(e)}\n\nЗадача сохранена в списке задач.",
-                "en": f"❌ Failed to add to Google Calendar.\n\nError: {str(e)}\n\nTask saved to your task list.",
-                "uk": f"❌ Не вдалося додати до Google Calendar.\n\nПомилка: {str(e)}\n\nЗадачу збережено у списку задач.",
+                "ru": f"❌ Не удалось добавить в Google Calendar.\n\nОшибка: `{str(e)}`\n\nЗадача сохранена в списке задач.",
+                "en": f"❌ Failed to add to Google Calendar.\n\nError: `{str(e)}`\n\nTask saved to your task list.",
+                "uk": f"❌ Не вдалося додати до Google Calendar.\n\nПомилка: `{str(e)}`\n\nЗадачу збережено у списку задач.",
             }
             save_task_to_db(chat_id, task)
-            await msg.edit_text(error_texts.get(lang, error_texts["ru"]))
+            await msg.edit_text(error_texts.get(lang, error_texts["ru"]), parse_mode="Markdown")
     elif action == "save":
         save_task_to_db(chat_id, task)
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
