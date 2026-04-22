@@ -406,13 +406,10 @@ def get_active_task_count(chat_id):
     conn = sqlite3.connect("users.db")
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
-    now = datetime.now(ZoneInfo(tz_name))
-    today = now.strftime("%Y-%m-%d")
-    current_time = now.strftime("%H:%M")
+    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
     count = conn.execute(
-        """SELECT COUNT(*) FROM tasks WHERE chat_id=?
-           AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))""",
-        (chat_id, today, today, current_time)
+        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date >= ?",
+        (chat_id, today)
     ).fetchone()[0]
     conn.close()
     return count
@@ -630,29 +627,46 @@ async def check_reminders():
 
 async def check_task_reminders():
     conn = sqlite3.connect("users.db")
-    users = conn.execute("SELECT chat_id, lang, timezone, reminder_minutes FROM users WHERE reminder_minutes > 0 AND lang IS NOT NULL").fetchall()
-    for chat_id, lang, tz_name, reminder_before in users:
+    users = conn.execute(
+        "SELECT chat_id, lang, timezone, reminder_minutes FROM users WHERE reminder_minutes > 0 AND lang IS NOT NULL"
+    ).fetchall()
+    for chat_id, lang, tz_name, reminder_minutes in users:
         try:
             tz = ZoneInfo(tz_name or "Europe/Moscow")
             now = datetime.now(tz)
-            remind_at = now + timedelta(minutes=reminder_before)
-            target_date = remind_at.strftime("%Y-%m-%d")
-            target_time = remind_at.strftime("%H:%M")
-            tasks = conn.execute(
-                "SELECT id, title, suggested_date, suggested_time FROM tasks WHERE chat_id=? AND suggested_date=? AND suggested_time=?",
-                (chat_id, target_date, target_time)
-            ).fetchall()
             lang = lang or "ru"
+
+            # Find tasks where the reminder window has opened:
+            #   task_time - reminder_minutes <= now  →  task_time <= now + reminder_minutes
+            # AND task hasn't happened yet (with 5-min grace for tasks just passed):
+            #   task_time >= now - 5min
+            # This range approach avoids missing tasks due to scheduler timing / exact-minute mismatch.
+            lo = now - timedelta(minutes=5)
+            hi = now + timedelta(minutes=reminder_minutes)
+
+            lo_date, lo_time = lo.strftime("%Y-%m-%d"), lo.strftime("%H:%M")
+            hi_date, hi_time = hi.strftime("%Y-%m-%d"), hi.strftime("%H:%M")
+
+            tasks = conn.execute(
+                """SELECT id, title, suggested_date, suggested_time FROM tasks
+                   WHERE chat_id=?
+                   AND suggested_time IS NOT NULL
+                   AND (suggested_date > ? OR (suggested_date = ? AND suggested_time >= ?))
+                   AND (suggested_date < ? OR (suggested_date = ? AND suggested_time <= ?))""",
+                (chat_id, lo_date, lo_date, lo_time, hi_date, hi_date, hi_time)
+            ).fetchall()
+
             for task_id, title, date, time in tasks:
                 remind_key = f"task_{task_id}"
-                if reminder_already_sent(chat_id, remind_key, target_time):
+                sent_key = f"{date}T{time}"
+                if reminder_already_sent(chat_id, remind_key, sent_key):
                     continue
                 await bot_app.bot.send_message(
                     chat_id=chat_id,
                     text=TEXTS[lang]["task_reminder"].format(title=title, time=time),
                     parse_mode="Markdown"
                 )
-                mark_reminder_sent(chat_id, remind_key, target_time)
+                mark_reminder_sent(chat_id, remind_key, sent_key)
         except Exception as e:
             logger.error(f"Task reminder error for {chat_id}: {e}")
     conn.close()
@@ -1238,10 +1252,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect("users.db")
         rows = conn.execute(
             """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
-               WHERE chat_id=?
-                 AND (suggested_date < ? OR (suggested_date = ? AND suggested_time IS NOT NULL AND suggested_time < ?))
+               WHERE chat_id=? AND suggested_date < ?
                ORDER BY suggested_date DESC, suggested_time DESC LIMIT 20""",
-            (chat_id, today, today, current_time)
+            (chat_id, today)
         ).fetchall()
         conn.close()
         t = TEXTS[lang]
@@ -1448,14 +1461,14 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
     now = datetime.now(ZoneInfo(user_tz))
     today = now.strftime("%Y-%m-%d")
     tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
-    current_time = now.strftime("%H:%M")
     conn = sqlite3.connect("users.db")
+    # Show all tasks from today onwards (today = active even if time passed).
+    # Archive is yesterday and before.
     rows = conn.execute(
         """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
-           WHERE chat_id=?
-             AND (suggested_date > ? OR (suggested_date = ? AND (suggested_time IS NULL OR suggested_time >= ?)))
+           WHERE chat_id=? AND suggested_date >= ?
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
-        (chat_id, today, today, current_time)
+        (chat_id, today)
     ).fetchall()
     conn.close()
     if not rows:
