@@ -151,6 +151,7 @@ TEXTS = {
         "added_btn": "📅 Открыть в Calendar",
         "task_saved": "✅ _Задача сохранена_",
         "task_skipped": "❌ _Задача не сохранена_",
+        "task_time_past": "⚠️ Указанное время уже прошло. Уточните, пожалуйста, когда именно нужно выполнить задачу.",
         "calendar_error": "Ошибка Calendar: ",
         "error": "Ошибка: ",
         "offer_calendar": "📅 Хотите добавлять задачи в Google Calendar и получать напоминания?",
@@ -233,6 +234,7 @@ TEXTS = {
         "added_btn": "📅 Open in Calendar",
         "task_saved": "✅ _Task saved_",
         "task_skipped": "❌ _Task not saved_",
+        "task_time_past": "⚠️ The specified time has already passed. Please clarify when exactly you need to complete this task.",
         "calendar_error": "Calendar error: ",
         "error": "Error: ",
         "offer_calendar": "📅 Want to add tasks to Google Calendar and get reminders?",
@@ -315,6 +317,7 @@ TEXTS = {
         "added_btn": "📅 Відкрити в Calendar",
         "task_saved": "✅ _Задачу збережено_",
         "task_skipped": "❌ _Задачу не збережено_",
+        "task_time_past": "⚠️ Вказаний час вже минув. Уточніть, будь ласка, коли саме потрібно виконати задачу.",
         "calendar_error": "Помилка Calendar: ",
         "error": "Помилка: ",
         "offer_calendar": "📅 Хочете додавати задачі до Google Calendar і отримувати нагадування?",
@@ -410,14 +413,17 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
+ВАЖНО: всегда возвращай время в будущем. Если пользователь говорит "в 7 часов", а сейчас уже {current_time} и 07:00 прошло — верни 19:00. Если и 19:00 прошло — верни 07:00 следующего дня. Задача не может быть в прошлом.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
+IMPORTANT: always return a future time. If the user says "at 7" and it is already past 07:00, return 19:00. If 19:00 has also passed, return 07:00 tomorrow. Tasks must never be scheduled in the past.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
+ВАЖЛИВО: завжди повертай час у майбутньому. Якщо користувач каже "о 7 годині", а зараз вже {current_time} і 07:00 минуло — повертай 19:00. Якщо й 19:00 минуло — повертай 07:00 наступного дня. Задача не може бути в минулому.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
@@ -686,6 +692,35 @@ async def send_morning_digests():
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+def adjust_task_to_future(task: dict, tz_name: str):
+    """
+    Checks if a task's suggested_date+time is in the past.
+    Returns (adjusted_task, status) where status is:
+      "ok"          — already in the future (no change)
+      "flipped"     — AM/PM flipped automatically (07:00 → 19:00)
+      "past"        — time is fully in the past, user must clarify
+    """
+    date_str = task.get("suggested_date")
+    time_str = task.get("suggested_time")
+    if not date_str or not time_str:
+        return task, "ok"
+    try:
+        tz = ZoneInfo(tz_name)
+        now = datetime.now(tz)
+        task_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+        if task_dt > now:
+            return task, "ok"
+        # Try flipping AM/PM (+12 hours)
+        flipped_dt = task_dt + timedelta(hours=12)
+        if flipped_dt > now:
+            adjusted = dict(task)
+            adjusted["suggested_date"] = flipped_dt.strftime("%Y-%m-%d")
+            adjusted["suggested_time"] = flipped_dt.strftime("%H:%M")
+            return adjusted, "flipped"
+        return task, "past"
+    except Exception:
+        return task, "ok"
+
 async def process_text(text, lang, tz_name="Europe/Moscow"):
     response = groq_client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -895,8 +930,23 @@ async def process_and_show(update, context, text, chat_id, lang):
     if not tasks:
         await update.message.reply_text(TEXTS[lang]["no_tasks"])
         return
-    context.user_data["tasks"] = tasks
-    await show_tasks(update, chat_id, tasks, lang)
+    # Validate and adjust task times — never allow past datetimes
+    valid_tasks = []
+    for task in tasks:
+        adjusted, status = adjust_task_to_future(task, tz_name)
+        if status == "past":
+            time_str = task.get("suggested_time", "")
+            date_str = task.get("suggested_date", "")
+            await update.message.reply_text(
+                f"⚠️ *{task.get('title', '')}*\n" + TEXTS[lang]["task_time_past"],
+                parse_mode="Markdown"
+            )
+        else:
+            valid_tasks.append(adjusted)
+    if not valid_tasks:
+        return
+    context.user_data["tasks"] = valid_tasks
+    await show_tasks(update, chat_id, valid_tasks, lang)
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
 
