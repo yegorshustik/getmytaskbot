@@ -430,17 +430,17 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
-ВАЖНО: всегда возвращай время в будущем. Если пользователь говорит "в 7 часов", а сейчас уже {current_time} и 07:00 прошло — верни 19:00. Если и 19:00 прошло — верни 07:00 следующего дня. Задача не может быть в прошлом.
+ВАЖНО про время: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Всегда возвращай время в будущем: если 07:00 уже прошло — верни 19:00; если и 19:00 прошло — верни 07:00 следующего дня.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
-IMPORTANT: always return a future time. If the user says "at 7" and it is already past 07:00, return 19:00. If 19:00 has also passed, return 07:00 tomorrow. Tasks must never be scheduled in the past.
+IMPORTANT about time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) Always return a future time: if 07:00 has passed return 19:00; if 19:00 has also passed return 07:00 tomorrow.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
-ВАЖЛИВО: завжди повертай час у майбутньому. Якщо користувач каже "о 7 годині", а зараз вже {current_time} і 07:00 минуло — повертай 19:00. Якщо й 19:00 минуло — повертай 07:00 наступного дня. Задача не може бути в минулому.
+ВАЖЛИВО про час: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Завжди повертай час у майбутньому: якщо 07:00 минуло — повертай 19:00; якщо й 19:00 минуло — повертай 07:00 наступного дня.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
