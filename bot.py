@@ -930,10 +930,18 @@ async def show_tasks(update, chat_id, tasks, lang):
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
         apple_row = [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")]
-        keyboard = InlineKeyboardMarkup([
-            apple_row,
-            save_skip_row,
-        ])
+        if user and user["calendar_connected"]:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
+                apple_row,
+                save_skip_row,
+            ])
+        else:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS[lang]["connect_calendar"], callback_data="connect_calendar")],
+                apple_row,
+                save_skip_row,
+            ])
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def offer_calendar(update, chat_id, lang):
@@ -1362,47 +1370,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
             link = add_to_calendar(chat_id, task)
-            added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
-            await msg.edit_text(TEXTS[lang]["added"], reply_markup=added_markup)
-            user_fresh = get_user(chat_id)
-            await query.message.reply_text(
-                TEXTS[lang]["menu_hint"],
-                reply_markup=main_menu_keyboard(lang, user_fresh["calendar_connected"], get_active_task_count(chat_id))
+            emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
+            date_display = format_date(task["suggested_date"], lang)
+            time_sep = _TIME_SEP.get(lang, " ")
+            success_texts = {
+                "ru": "✅ Задача сохранена и добавлена в Google Calendar",
+                "en": "✅ Task saved and added to Google Calendar",
+                "uk": "✅ Задачу збережено та додано до Google Calendar",
+            }
+            card = (
+                f"{emoji} *{task['title']}*\n"
+                f"📅 {date_display}"
+                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n\n"
+                + success_texts.get(lang, success_texts["ru"])
             )
+            added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+            await msg.edit_text(card, parse_mode="Markdown", reply_markup=added_markup)
+            user_fresh = get_user(chat_id)
             if not user_fresh["first_task_done"]:
                 save_user(chat_id, first_task_done=1)
                 await ask_reminder_minutes(query.message, chat_id, lang)
         except Exception as e:
-            await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
+            error_texts = {
+                "ru": f"❌ Не удалось добавить в Google Calendar: {str(e)}\n\nЗадача сохранена в списке задач.",
+                "en": f"❌ Failed to add to Google Calendar: {str(e)}\n\nTask saved to your task list.",
+                "uk": f"❌ Не вдалося додати до Google Calendar: {str(e)}\n\nЗадачу збережено у списку задач.",
+            }
+            save_task_to_db(chat_id, task)
+            await msg.edit_text(error_texts.get(lang, error_texts["ru"]))
     elif action == "save":
+        save_task_to_db(chat_id, task)
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
         time_sep = _TIME_SEP.get(lang, " ")
-        user_fresh = get_user(chat_id)
-        calendar_link = None
-        # If calendar connected — add to Google Calendar (also saves to DB)
-        if user_fresh and user_fresh["calendar_connected"]:
-            service = get_calendar_service_for_user(chat_id)
-            if service:
-                user_tz = user_fresh["timezone"] if user_fresh else "Europe/Moscow"
-                conflicts = check_conflicts(service, task["suggested_date"], task.get("suggested_time"), user_tz)
-                if conflicts:
-                    conflict_title = conflicts[0].get("summary", "—")
-                    context.user_data["pending_task"] = task
-                    await query.edit_message_reply_markup(reply_markup=None)
-                    await query.message.reply_text(
-                        TEXTS[lang]["conflict_found"].format(event=conflict_title, title=task["title"]),
-                        parse_mode="Markdown"
-                    )
-                    return
-                try:
-                    calendar_link = add_to_calendar(chat_id, task)
-                except Exception:
-                    save_task_to_db(chat_id, task)
-            else:
-                save_task_to_db(chat_id, task)
-        else:
-            save_task_to_db(chat_id, task)
         card = (
             f"{emoji} *{task['title']}*\n"
             f"{task['quadrant']} — {task['quadrant_name']}\n"
@@ -1410,10 +1410,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
             f"_{task['reason']}_\n\n"
             + TEXTS[lang]["task_saved"]
-            + (" 📅" if calendar_link else "")
         )
-        added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=calendar_link)]]) if calendar_link else None
-        await query.edit_message_text(card, parse_mode="Markdown", reply_markup=added_markup)
+        await query.edit_message_text(card, parse_mode="Markdown")
         user_fresh = get_user(chat_id)
         if not user_fresh["first_task_done"]:
             save_user(chat_id, first_task_done=1)
