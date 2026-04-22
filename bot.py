@@ -70,6 +70,7 @@ def init_db():
         ("reminder_enabled", "INTEGER DEFAULT 1"),
         ("reminder_before", "INTEGER DEFAULT 30"),
         ("reminder_minutes", "INTEGER DEFAULT 30"),
+        ("pending_task_json", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -1194,6 +1195,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "connect_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
+        # If triggered from a task card, save the task so we can resume after OAuth
+        tasks = context.user_data.get("tasks", [])
+        # Try to find which task index triggered this (store all pending tasks)
+        if tasks:
+            save_user(chat_id, pending_task_json=json.dumps(tasks))
         auth_url = get_auth_url(chat_id)
         await query.message.reply_text(
             TEXTS[lang]["connect_link"],
@@ -1542,6 +1548,37 @@ async def oauth_callback(request):
         text=TEXTS[lang]["calendar_connected"],
         reply_markup=main_menu_keyboard(lang, calendar_connected=True, task_count=get_active_task_count(chat_id))
     )
+    # Restore pending tasks if user connected calendar from a task card
+    pending_json = user.get("pending_task_json") if user else None
+    if pending_json:
+        try:
+            pending_tasks = json.loads(pending_json)
+            save_user(chat_id, pending_task_json=None)
+            resume_texts = {
+                "ru": "📋 Вот ваши задачи — теперь можно добавить в Google Calendar:",
+                "en": "📋 Here are your tasks — now you can add them to Google Calendar:",
+                "uk": "📋 Ось ваші задачі — тепер можна додати до Google Calendar:",
+            }
+            await bot_app.bot.send_message(chat_id=chat_id, text=resume_texts.get(lang, resume_texts["ru"]))
+            for i, task in enumerate(pending_tasks):
+                emoji = QUADRANT_EMOJI.get(task.get("quadrant", ""), "⚪")
+                date_display = format_date(task.get("suggested_date", ""), lang)
+                time_sep = _TIME_SEP.get(lang, " ")
+                text = (
+                    f"{emoji} *{task['title']}*\n"
+                    f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
+                    f"📅 {date_display}"
+                    + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+                    f"_{task.get('reason', '')}_"
+                )
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
+                    [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
+                     InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
+                ])
+                await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception:
+            pass
     return web.Response(text="✅ Calendar connected! You can close this tab.")
 
 async def start_web_server():
