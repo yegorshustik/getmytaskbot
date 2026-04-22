@@ -103,6 +103,7 @@ def get_user(chat_id):
             "reminder_enabled": row[7] if len(row) > 7 else 1,
             "reminder_before": row[8] if len(row) > 8 and row[8] is not None else 30,
             "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
+            "pending_task_json": row[10] if len(row) > 10 else None,
         }
     return None
 
