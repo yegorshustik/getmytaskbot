@@ -834,33 +834,27 @@ def _days_word(n: int, lang: str, t: dict) -> str:
         return t["tasks_days_5"]
     return t["tasks_days_5"]  # English "days"
 
-def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str):
+def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, current_time_str: str) -> str:
     """
-    rows: (id, title, quadrant, suggested_date, suggested_time, done)
-    Groups tasks by date, shows up to 3 days.
-    Returns (text: str, keyboard: InlineKeyboardMarkup | None).
+    rows: (title, quadrant, suggested_date, suggested_time)
+    A task is visually done when its date+time has passed:
+      - has time: date < today OR (date == today AND time < current_time)
+      - no time:  date < today
     """
     from collections import defaultdict
     t = TEXTS[lang]
     time_sep = _TIME_SEP.get(lang, " ")
 
     by_date: dict = defaultdict(list)
-    for task_id, title, quadrant, date, time, done in rows:
-        by_date[date].append((task_id, title, quadrant, time, done))
+    for title, quadrant, date, time in rows:
+        is_done = (date < today_str) or (date == today_str and bool(time) and time < current_time_str)
+        by_date[date].append((title, quadrant, time, is_done))
 
     sorted_dates = sorted(by_date.keys())
     visible_dates = sorted_dates[:3]
     hidden_count = len(sorted_dates) - len(visible_dates)
 
     blocks = []
-    btn_labels = {
-        "ru": "✅ Готово",
-        "en": "✅ Done",
-        "uk": "✅ Готово",
-    }
-    done_btn_label = btn_labels.get(lang, "✅ Done")
-
-    keyboard_rows = []
     for date in visible_dates:
         formatted = format_date(date, lang)
         if date == today_str:
@@ -871,27 +865,16 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str):
             header = f"*{formatted}*"
 
         lines = [header]
-        row = []
-        for task_id, title, quadrant, time, done in by_date[date]:
-            icon = "✅" if done else QUADRANT_EMOJI.get(quadrant, "⚪")
+        for title, quadrant, time, is_done in by_date[date]:
+            icon = "✅" if is_done else QUADRANT_EMOJI.get(quadrant, "⚪")
             time_str = f"{time_sep}{time}" if time else ""
             lines.append(f"{icon} {title}{time_str}")
-            if not done:
-                label = (title[:18] + "…") if len(title) > 18 else title
-                row.append(InlineKeyboardButton(f"✅ {label}", callback_data=f"done_{task_id}"))
-                if len(row) == 2:
-                    keyboard_rows.append(row)
-                    row = []
-        if row:
-            keyboard_rows.append(row)
         blocks.append("\n".join(lines))
 
     text = t["tasks_header"] + "\n\n".join(blocks)
     if hidden_count > 0:
         text += "\n\n" + t["tasks_more_days"].format(n=hidden_count, days=_days_word(hidden_count, lang, t))
-
-    markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
-    return text, markup
+    return text
 
 def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
@@ -1371,27 +1354,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_ask_set"].format(min=mins))
         return
-    if data.startswith("done_"):
-        task_id = int(data[5:])
-        conn = sqlite3.connect("users.db")
-        conn.execute("UPDATE tasks SET done=1 WHERE id=? AND chat_id=?", (task_id, chat_id))
-        conn.commit()
-        # Re-fetch and re-render the task list in-place
-        user_obj = get_user(chat_id)
-        tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
-        now = datetime.now(ZoneInfo(tz_name))
-        today = now.strftime("%Y-%m-%d")
-        tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
-        rows = conn.execute(
-            """SELECT id, title, quadrant, suggested_date, suggested_time, done FROM tasks
-               WHERE chat_id=? AND suggested_date >= ?
-               ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
-            (chat_id, today)
-        ).fetchall()
-        conn.close()
-        text, markup = build_tasks_by_day(rows, lang, today, tomorrow)
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=markup)
-        return
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
     idx_int = int(idx)
@@ -1503,8 +1465,9 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
     conn = sqlite3.connect("users.db")
     # Show all tasks from today onwards (today = active even if time passed).
     # Archive is yesterday and before.
+    current_time = now.strftime("%H:%M")
     rows = conn.execute(
-        """SELECT id, title, quadrant, suggested_date, suggested_time, done FROM tasks
+        """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
            WHERE chat_id=? AND suggested_date >= ?
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
         (chat_id, today)
@@ -1513,8 +1476,8 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
     if not rows:
         await update.message.reply_text(TEXTS[lang]["tasks_empty"])
         return
-    text, markup = build_tasks_by_day(rows, lang, today, tomorrow)
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=markup)
+    text = build_tasks_by_day(rows, lang, today, tomorrow, current_time)
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
