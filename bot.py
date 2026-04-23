@@ -54,6 +54,13 @@ def init_db():
         )
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS oauth_states (
+            state TEXT PRIMARY KEY,
+            chat_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER,
@@ -556,7 +563,22 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
 
 # ─── OAuth ────────────────────────────────────────────────────────────────────
 
-pending_oauth = {}
+def save_oauth_state(state, chat_id):
+    conn = sqlite3.connect("users.db")
+    conn.execute("DELETE FROM oauth_states WHERE created_at < datetime('now', '-1 hour')")  # cleanup old
+    conn.execute("INSERT OR REPLACE INTO oauth_states (state, chat_id) VALUES (?, ?)", (state, chat_id))
+    conn.commit()
+    conn.close()
+
+def pop_oauth_state(state):
+    """Returns chat_id for state and deletes it, or None if not found."""
+    conn = sqlite3.connect("users.db")
+    row = conn.execute("SELECT chat_id FROM oauth_states WHERE state=?", (state,)).fetchone()
+    if row:
+        conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
+        conn.commit()
+    conn.close()
+    return row[0] if row else None
 
 def get_auth_url(chat_id):
     flow = Flow.from_client_secrets_file(
@@ -565,7 +587,7 @@ def get_auth_url(chat_id):
         redirect_uri=f"{BASE_URL}/oauth/callback"
     )
     auth_url, state = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
-    pending_oauth[state] = {"chat_id": chat_id, "flow": flow}
+    save_oauth_state(state, chat_id)
     return auth_url
 
 
@@ -1590,11 +1612,17 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def oauth_callback(request):
     state = request.rel_url.query.get("state")
     code = request.rel_url.query.get("code")
-    if not state or state not in pending_oauth:
+    if not state:
         return web.Response(text="Invalid state", status=400)
-    entry = pending_oauth.pop(state)
-    chat_id = entry["chat_id"]
-    flow = entry["flow"]
+    chat_id = pop_oauth_state(state)
+    if not chat_id:
+        return web.Response(text="Session expired. Please connect calendar again in the bot.", status=400)
+    flow = Flow.from_client_secrets_file(
+        "credentials.json",
+        scopes=SCOPES,
+        redirect_uri=f"{BASE_URL}/oauth/callback",
+        state=state
+    )
     flow.fetch_token(code=code)
     creds = flow.credentials
     save_user(chat_id, calendar_token=creds.to_json(), calendar_connected=1)
