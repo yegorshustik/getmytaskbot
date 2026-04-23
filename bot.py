@@ -110,6 +110,17 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(google_event_id)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS recurring_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            title TEXT,
+            google_event_id TEXT,
+            rrule TEXT,
+            suggested_time TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
     # Migrate oauth_states: add code_verifier column if missing
     try:
         c.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
@@ -206,6 +217,17 @@ TEXTS = {
         "feedback_from": "📨 *Новое сообщение*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Язык: {lang}\n📱 Get My Task Bot",
         "cal_sync_new": "📅 Новая задача из Google Calendar:\n{emoji} *{title}*\n📅 {date}",
         "cal_sync_removed": "🗑 Задача удалена из Google Calendar:\n*{title}*",
+        "recurring_label": "🔄 Повторяющаяся задача",
+        "recurring_schedule_daily": "каждый день",
+        "recurring_schedule_weekly": "каждый {days}",
+        "recurring_day_names": {"MO":"пн","TU":"вт","WE":"ср","TH":"чт","FR":"пт","SA":"сб","SU":"вс"},
+        "btn_recur_yes": "✅ Да, повторяющаяся",
+        "btn_recur_once": "1️⃣ Только один раз",
+        "recur_created": "🔄 Повторяющаяся задача *{title}* создана!\n📅 {schedule}",
+        "btn_recur_continue": "✅ Продолжить серию",
+        "btn_recur_delete": "🗑 Удалить серию",
+        "recur_continued": "✅ Серия продолжается",
+        "recur_deleted": "🗑 Повторяющаяся задача *{title}* удалена",
         "calendar_not_connected": "❌ Календарь не подключён. Используйте /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапишите или надиктуйте другое время для задачи *{title}*:",
@@ -307,6 +329,17 @@ TEXTS = {
         "feedback_from": "📨 *New message*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Lang: {lang}\n📱 Get My Task Bot",
         "cal_sync_new": "📅 New task from Google Calendar:\n{emoji} *{title}*\n📅 {date}",
         "cal_sync_removed": "🗑 Task removed from Google Calendar:\n*{title}*",
+        "recurring_label": "🔄 Recurring task",
+        "recurring_schedule_daily": "every day",
+        "recurring_schedule_weekly": "every {days}",
+        "recurring_day_names": {"MO":"Mon","TU":"Tue","WE":"Wed","TH":"Thu","FR":"Fri","SA":"Sat","SU":"Sun"},
+        "btn_recur_yes": "✅ Yes, recurring",
+        "btn_recur_once": "1️⃣ One time only",
+        "recur_created": "🔄 Recurring task *{title}* created!\n📅 {schedule}",
+        "btn_recur_continue": "✅ Continue series",
+        "btn_recur_delete": "🗑 Delete series",
+        "recur_continued": "✅ Series continues",
+        "recur_deleted": "🗑 Recurring task *{title}* deleted",
         "calendar_not_connected": "❌ Calendar not connected. Use /connect to connect.",
         "reminder": "🔔 Reminder: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ There's already an event at this time: *{event}*.\n\nWrite or say a new time for *{title}*:",
@@ -408,6 +441,17 @@ TEXTS = {
         "feedback_from": "📨 *Нове повідомлення*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Мова: {lang}\n📱 Get My Task Bot",
         "cal_sync_new": "📅 Нова задача з Google Calendar:\n{emoji} *{title}*\n📅 {date}",
         "cal_sync_removed": "🗑 Задачу видалено з Google Calendar:\n*{title}*",
+        "recurring_label": "🔄 Повторювана задача",
+        "recurring_schedule_daily": "щодня",
+        "recurring_schedule_weekly": "кожен {days}",
+        "recurring_day_names": {"MO":"пн","TU":"вт","WE":"ср","TH":"чт","FR":"пт","SA":"сб","SU":"нд"},
+        "btn_recur_yes": "✅ Так, повторювана",
+        "btn_recur_once": "1️⃣ Тільки один раз",
+        "recur_created": "🔄 Повторювана задача *{title}* створена!\n📅 {schedule}",
+        "btn_recur_continue": "✅ Продовжити серію",
+        "btn_recur_delete": "🗑 Видалити серію",
+        "recur_continued": "✅ Серія продовжується",
+        "recur_deleted": "🗑 Повторювана задача *{title}* видалена",
         "calendar_not_connected": "❌ Календар не підключено. Використайте /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапишіть або надиктуйте інший час для задачі *{title}*:",
@@ -504,16 +548,19 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
 ВАЖНО про время: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Всегда возвращай время в будущем: если 07:00 уже прошло — верни 19:00; если и 19:00 прошло — верни 07:00 следующего дня.
+Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
 IMPORTANT about time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) Always return a future time: if 07:00 has passed return 19:00; if 19:00 has also passed return 07:00 tomorrow.
+If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
 ВАЖЛИВО про час: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Завжди повертай час у майбутньому: якщо 07:00 минуло — повертай 19:00; якщо й 19:00 минуло — повертай 07:00 наступного дня.
+Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
@@ -587,6 +634,63 @@ def add_to_calendar(chat_id, task):
     result = service.events().insert(calendarId="primary", body=event).execute()
     save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
     return result.get("htmlLink")
+
+def describe_recurrence(recurrence: dict, lang: str) -> str:
+    t = TEXTS[lang]
+    freq = recurrence.get("freq", "DAILY")
+    days = recurrence.get("days", [])
+    if freq == "DAILY":
+        return t["recurring_schedule_daily"]
+    if freq == "WEEKLY" and days:
+        names = t["recurring_day_names"]
+        day_str = ", ".join(names.get(d, d) for d in days)
+        return t["recurring_schedule_weekly"].format(days=day_str)
+    return ""
+
+def add_recurring_to_calendar(chat_id, task):
+    service = get_calendar_service_for_user(chat_id)
+    if not service:
+        return None, None
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    reminder_mins = user.get("reminder_minutes", 30) if user else 30
+    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
+    time = task.get("suggested_time")
+    recurrence_obj = task.get("recurrence", {})
+    freq = recurrence_obj.get("freq", "DAILY")
+    days = recurrence_obj.get("days", [])
+    rrule = f"RRULE:FREQ={freq}" + (f";BYDAY={','.join(days)}" if days else "")
+    if time:
+        start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
+        end_dt = start_dt + timedelta(minutes=30)
+        start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
+        end = {"dateTime": f"{end_dt.strftime('%Y-%m-%d')}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
+    else:
+        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        start = {"date": date}
+        end = {"date": next_day}
+    event = {
+        "summary": task["title"],
+        "description": task.get("description", ""),
+        "start": start,
+        "end": end,
+        "recurrence": [rrule],
+        "reminders": {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": reminder_mins}]
+        }
+    }
+    result = service.events().insert(calendarId="primary", body=event).execute()
+    event_id = result.get("id")
+    conn = sqlite3.connect("users.db")
+    conn.execute(
+        "INSERT INTO recurring_tasks (chat_id, title, google_event_id, rrule, suggested_time) VALUES (?,?,?,?,?)",
+        (chat_id, task["title"], event_id, rrule, time)
+    )
+    conn.commit()
+    conn.close()
+    save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=event_id)
+    return event_id, result.get("htmlLink")
 
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
@@ -731,9 +835,31 @@ async def check_reminders():
                                 "en": "📅 Open in Google Calendar",
                                 "uk": "📅 Відкрити в Google Календарі",
                             }
-                            markup = InlineKeyboardMarkup([[
-                                InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)
-                            ]]) if event_link else None
+                            # Check if this is a recurring event instance
+                            master_event_id = event.get("recurringEventId")
+                            recurring_row = None
+                            if master_event_id:
+                                rc = sqlite3.connect("users.db")
+                                recurring_row = rc.execute(
+                                    "SELECT id FROM recurring_tasks WHERE chat_id=? AND google_event_id=?",
+                                    (chat_id, master_event_id)
+                                ).fetchone()
+                                rc.close()
+                            t_lang = TEXTS[eff_lang]
+                            if recurring_row:
+                                rid = recurring_row[0]
+                                btn_rows = []
+                                if event_link:
+                                    btn_rows.append([InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)])
+                                btn_rows.append([
+                                    InlineKeyboardButton(t_lang["btn_recur_continue"], callback_data=f"recur_continue_{rid}"),
+                                    InlineKeyboardButton(t_lang["btn_recur_delete"], callback_data=f"recur_delete_{rid}"),
+                                ])
+                                markup = InlineKeyboardMarkup(btn_rows)
+                            else:
+                                markup = InlineKeyboardMarkup([[
+                                    InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)
+                                ]]) if event_link else None
                             await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
                             mark_reminder_sent(chat_id, event_id, remind_key)
         except Exception as e:
@@ -1148,18 +1274,27 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
-        apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
-        if user and user["calendar_connected"]:
+        if task.get("recurring") and task.get("recurrence"):
+            schedule = describe_recurrence(task["recurrence"], lang)
+            text += f"\n_{TEXTS[lang]['recurring_label']} — {schedule}_"
             keyboard = InlineKeyboardMarkup([
-                [apple_btn],
-                save_skip_row,
+                [InlineKeyboardButton(TEXTS[lang]["btn_recur_yes"], callback_data=f"recur_yes_{i}")],
+                [InlineKeyboardButton(TEXTS[lang]["btn_recur_once"], callback_data=f"recur_once_{i}"),
+                 InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
             ])
         else:
-            gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
-            keyboard = InlineKeyboardMarkup([
-                [gcal_btn, apple_btn],
-                save_skip_row,
-            ])
+            apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
+            if user and user["calendar_connected"]:
+                keyboard = InlineKeyboardMarkup([
+                    [apple_btn],
+                    save_skip_row,
+                ])
+            else:
+                gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
+                keyboard = InlineKeyboardMarkup([
+                    [gcal_btn, apple_btn],
+                    save_skip_row,
+                ])
         card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
         # Store all message_ids needed for skip-cleanup in the task itself
         if context is not None:
@@ -1623,6 +1758,96 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_user(chat_id, reminder_minutes=mins, reminder_before=mins)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_ask_set"].format(min=mins))
+        return
+    if data.startswith("recur_continue_"):
+        rid = int(data[len("recur_continue_"):])
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(TEXTS[lang]["recur_continued"])
+        return
+    if data.startswith("recur_delete_"):
+        rid = int(data[len("recur_delete_"):])
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT title, google_event_id FROM recurring_tasks WHERE id=? AND chat_id=?", (rid, chat_id)).fetchone()
+        conn.close()
+        if not row:
+            await query.answer("Not found.")
+            return
+        title, event_id = row
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            service = get_calendar_service_for_user(chat_id)
+            if service and event_id:
+                service.events().delete(calendarId="primary", eventId=event_id).execute()
+        except Exception as e:
+            logger.error(f"Failed to delete recurring calendar event {event_id}: {e}")
+        conn = sqlite3.connect("users.db")
+        conn.execute("DELETE FROM recurring_tasks WHERE id=?", (rid,))
+        conn.execute("DELETE FROM tasks WHERE chat_id=? AND google_event_id=? AND done=0", (chat_id, event_id))
+        conn.commit()
+        conn.close()
+        await query.message.reply_text(
+            TEXTS[lang]["recur_deleted"].format(title=title), parse_mode="Markdown"
+        )
+        return
+    if data.startswith("recur_yes_") or data.startswith("recur_once_"):
+        is_recurring = data.startswith("recur_yes_")
+        idx_str = data.split("_")[-1]
+        idx_int = int(idx_str)
+        tasks = context.user_data.get("tasks", [])
+        if idx_int >= len(tasks):
+            await query.answer("Session expired.")
+            return
+        task = tasks[idx_int]
+        await query.edit_message_reply_markup(reply_markup=None)
+        if is_recurring:
+            try:
+                _, link = add_recurring_to_calendar(chat_id, task)
+                schedule = describe_recurrence(task.get("recurrence", {}), lang)
+                added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+                await query.message.reply_text(
+                    TEXTS[lang]["recur_created"].format(title=task["title"], schedule=schedule),
+                    parse_mode="Markdown", reply_markup=added_markup
+                )
+            except Exception as e:
+                logger.error(f"recurring calendar error {chat_id}: {e}", exc_info=True)
+                await query.message.reply_text(TEXTS[lang]["calendar_error"] + str(e))
+        else:
+            # treat as normal one-time save
+            if user and user["calendar_connected"]:
+                service = get_calendar_service_for_user(chat_id)
+                if service:
+                    user_tz = user["timezone"] if user else "Europe/Moscow"
+                    conflicts = check_conflicts(service, task["suggested_date"], task.get("suggested_time"), user_tz)
+                    if conflicts:
+                        conflict_title = conflicts[0].get("summary", "—")
+                        context.user_data[f"conflict_{idx_str}"] = {
+                            "task": task,
+                            "cleanup_ids": task.get("_cleanup_ids", [query.message.message_id]),
+                        }
+                        await query.message.reply_text(
+                            TEXTS[lang]["conflict_confirm"].format(event=conflict_title, title=task["title"]),
+                            parse_mode="Markdown",
+                            reply_markup=InlineKeyboardMarkup([[
+                                InlineKeyboardButton(TEXTS[lang]["conflict_save_anyway"], callback_data=f"force_save_{idx_str}"),
+                                InlineKeyboardButton(TEXTS[lang]["conflict_no_save"], callback_data=f"cancel_save_{idx_str}"),
+                            ]])
+                        )
+                        return
+                    msg = await query.message.reply_text(TEXTS[lang]["adding"])
+                    try:
+                        link = add_to_calendar(chat_id, task)
+                        await msg.delete()
+                        added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+                        await query.message.reply_text(
+                            TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                            parse_mode="Markdown", reply_markup=added_markup
+                        )
+                    except Exception as e:
+                        save_task_to_db(chat_id, task)
+                        await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e))
+            else:
+                save_task_to_db(chat_id, task)
+                await query.message.reply_text(TEXTS[lang]["task_saved"], parse_mode="Markdown")
         return
     if data.startswith("force_save_") or data.startswith("cancel_save_"):
         idx_str = data.split("_")[-1]
