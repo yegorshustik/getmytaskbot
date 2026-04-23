@@ -201,6 +201,10 @@ TEXTS = {
         "calendar_not_connected": "❌ Календарь не подключён. Используйте /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапишите или надиктуйте другое время для задачи *{title}*:",
+        "conflict_confirm": "⚠️ В это время уже есть: *{event}*.\n\nСохранить *{title}* всё равно?",
+        "conflict_save_anyway": "✅ Сохранить всё равно",
+        "conflict_no_save": "❌ Не сохранять",
+        "saved_with_calendar": "✅ *{title}* сохранена в задачах и добавлена в Google Calendar",
         "correction_unclear": "⚠️ Не понял новое время. Попробуйте написать например: «в 11 утра» или «завтра в 15:00»",
         "rescheduled": "✅ Время обновлено: {date} в {time}",
         "timezone_current": "🕐 Ваша текущая временная зона: *{tz}*\n\nВыберите из списка или введите вручную:",
@@ -292,6 +296,10 @@ TEXTS = {
         "calendar_not_connected": "❌ Calendar not connected. Use /connect to connect.",
         "reminder": "🔔 Reminder: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ There's already an event at this time: *{event}*.\n\nWrite or say a new time for *{title}*:",
+        "conflict_confirm": "⚠️ There's already an event at this time: *{event}*.\n\nSave *{title}* anyway?",
+        "conflict_save_anyway": "✅ Save anyway",
+        "conflict_no_save": "❌ Don't save",
+        "saved_with_calendar": "✅ *{title}* saved to tasks and added to Google Calendar",
         "correction_unclear": "⚠️ Couldn't understand the new time. Try something like: 'at 11am' or 'tomorrow at 3pm'",
         "rescheduled": "✅ Time updated: {date} at {time}",
         "timezone_current": "🕐 Your current timezone: *{tz}*\n\nChoose from the list or enter manually:",
@@ -383,6 +391,10 @@ TEXTS = {
         "calendar_not_connected": "❌ Календар не підключено. Використайте /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапишіть або надиктуйте інший час для задачі *{title}*:",
+        "conflict_confirm": "⚠️ На цей час вже є подія: *{event}*.\n\nЗберегти *{title}* все одно?",
+        "conflict_save_anyway": "✅ Зберегти все одно",
+        "conflict_no_save": "❌ Не зберігати",
+        "saved_with_calendar": "✅ *{title}* збережено у задачах та додано до Google Calendar",
         "correction_unclear": "⚠️ Не зрозумів новий час. Спробуйте написати, наприклад: «об 11 ранку» або «завтра о 15:00»",
         "rescheduled": "✅ Час оновлено: {date} о {time}",
         "timezone_current": "🕐 Ваш поточний часовий пояс: *{tz}*\n\nОберіть зі списку або введіть вручну:",
@@ -1014,17 +1026,16 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
-        apple_row = [InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")]
+        apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
         if user and user["calendar_connected"]:
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
-                apple_row,
+                [apple_btn],
                 save_skip_row,
             ])
         else:
+            gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(TEXTS[lang]["connect_calendar"], callback_data="connect_calendar")],
-                apple_row,
+                [gcal_btn, apple_btn],
                 save_skip_row,
             ])
         card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
@@ -1456,6 +1467,47 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_ask_set"].format(min=mins))
         return
+    if data.startswith("force_save_") or data.startswith("cancel_save_"):
+        idx_str = data.split("_")[-1]
+        is_force = data.startswith("force_save_")
+        conflict_key = f"conflict_{idx_str}"
+        conflict_data = context.user_data.get(conflict_key)
+        if not conflict_data:
+            await query.answer("Session expired.")
+            return
+        task = conflict_data["task"]
+        cleanup_ids = conflict_data.get("cleanup_ids", [])
+        await query.edit_message_reply_markup(reply_markup=None)
+        if is_force:
+            msg = await query.message.reply_text(TEXTS[lang]["adding"])
+            try:
+                link = add_to_calendar(chat_id, task)
+                await msg.delete()
+                added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+                await query.message.reply_text(
+                    TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                    parse_mode="Markdown",
+                    reply_markup=added_markup
+                )
+                user_fresh = get_user(chat_id)
+                if not user_fresh["first_task_done"]:
+                    save_user(chat_id, first_task_done=1)
+                    await ask_reminder_minutes(query.message, chat_id, lang)
+            except Exception as e:
+                save_task_to_db(chat_id, task)
+                await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
+        else:
+            for msg_id in cleanup_ids:
+                try:
+                    await context.bot.delete_message(chat_id, msg_id)
+                except Exception:
+                    pass
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+        context.user_data.pop(conflict_key, None)
+        return
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
     idx_int = int(idx)
@@ -1519,6 +1571,47 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_task_to_db(chat_id, task)
             await msg.edit_text(error_texts.get(lang, error_texts["ru"]), parse_mode="Markdown")
     elif action == "save":
+        if user and user["calendar_connected"]:
+            service = get_calendar_service_for_user(chat_id)
+            if service:
+                user_tz = user["timezone"] if user else "Europe/Moscow"
+                conflicts = check_conflicts(service, task["suggested_date"], task.get("suggested_time"), user_tz)
+                if conflicts:
+                    conflict_title = conflicts[0].get("summary", "—")
+                    context.user_data[f"conflict_{idx}"] = {
+                        "task": task,
+                        "cleanup_ids": task.get("_cleanup_ids", [query.message.message_id]),
+                    }
+                    await query.edit_message_reply_markup(reply_markup=None)
+                    await query.message.reply_text(
+                        TEXTS[lang]["conflict_confirm"].format(event=conflict_title, title=task["title"]),
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(TEXTS[lang]["conflict_save_anyway"], callback_data=f"force_save_{idx}"),
+                            InlineKeyboardButton(TEXTS[lang]["conflict_no_save"], callback_data=f"cancel_save_{idx}"),
+                        ]])
+                    )
+                    return
+                await query.edit_message_reply_markup(reply_markup=None)
+                msg = await query.message.reply_text(TEXTS[lang]["adding"])
+                try:
+                    link = add_to_calendar(chat_id, task)
+                    await msg.delete()
+                    added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+                    await query.message.reply_text(
+                        TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                        parse_mode="Markdown",
+                        reply_markup=added_markup
+                    )
+                    user_fresh = get_user(chat_id)
+                    if not user_fresh["first_task_done"]:
+                        save_user(chat_id, first_task_done=1)
+                        await ask_reminder_minutes(query.message, chat_id, lang)
+                except Exception as e:
+                    logger.error(f"auto calendar sync error for {chat_id}: {e}", exc_info=True)
+                    save_task_to_db(chat_id, task)
+                    await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
+                return
         save_task_to_db(chat_id, task)
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
@@ -1769,7 +1862,6 @@ async def oauth_callback(request):
                     f"_{task.get('reason', '')}_"
                 )
                 keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
                     [InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")],
                     [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
                      InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
