@@ -198,6 +198,10 @@ TEXTS = {
         "skip_calendar": "➡️ Пропустить",
         "connect_link": "🔗 Подключите Google Calendar:",
         "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать вам о задачах.",
+        "btn_feedback": "✉️ Написать нам",
+        "feedback_prompt": "✉️ Напишите ваше сообщение — текст или голосовое. Мы читаем каждое обращение.",
+        "feedback_sent": "✅ Сообщение отправлено! Спасибо за обратную связь.",
+        "feedback_from": "📨 *Новое сообщение*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Язык: {lang}\n📱 Get My Task Bot",
         "calendar_not_connected": "❌ Календарь не подключён. Используйте /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапишите или надиктуйте другое время для задачи *{title}*:",
@@ -293,6 +297,10 @@ TEXTS = {
         "skip_calendar": "➡️ Skip",
         "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
+        "btn_feedback": "✉️ Contact us",
+        "feedback_prompt": "✉️ Send us a message — text or voice. We read every submission.",
+        "feedback_sent": "✅ Message sent! Thank you for your feedback.",
+        "feedback_from": "📨 *New message*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Lang: {lang}\n📱 Get My Task Bot",
         "calendar_not_connected": "❌ Calendar not connected. Use /connect to connect.",
         "reminder": "🔔 Reminder: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ There's already an event at this time: *{event}*.\n\nWrite or say a new time for *{title}*:",
@@ -388,6 +396,10 @@ TEXTS = {
         "skip_calendar": "➡️ Пропустити",
         "connect_link": "🔗 Підключіть Google Calendar:",
         "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму вам про задачі.",
+        "btn_feedback": "✉️ Написати нам",
+        "feedback_prompt": "✉️ Напишіть ваше повідомлення — текст або голосове. Ми читаємо кожне звернення.",
+        "feedback_sent": "✅ Повідомлення надіслано! Дякуємо за зворотній зв'язок.",
+        "feedback_from": "📨 *Нове повідомлення*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Мова: {lang}\n📱 Get My Task Bot",
         "calendar_not_connected": "❌ Календар не підключено. Використайте /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапишіть або надиктуйте інший час для задачі *{title}*:",
@@ -1171,6 +1183,24 @@ async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Google Calendar", url=auth_url)]])
     )
 
+async def _send_feedback_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, lang: str):
+    tg_user = update.effective_user
+    name = (tg_user.full_name or "—") if tg_user else "—"
+    username = tg_user.username or "нет" if tg_user else "—"
+    header = TEXTS[lang]["feedback_from"].format(
+        name=name, username=username, chat_id=chat_id, lang=lang
+    )
+    try:
+        await context.bot.send_message(chat_id=BOT_OWNER_ID, text=header, parse_mode="Markdown")
+        await context.bot.forward_message(
+            chat_id=BOT_OWNER_ID,
+            from_chat_id=chat_id,
+            message_id=update.message.message_id
+        )
+    except Exception as e:
+        logger.error(f"Failed to forward feedback to owner: {e}")
+    await update.message.reply_text(TEXTS[lang]["feedback_sent"])
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
@@ -1179,6 +1209,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lang = user["lang"]
     user_text = update.message.text.strip()
+    if context.user_data.get("awaiting_feedback"):
+        context.user_data.pop("awaiting_feedback")
+        await _send_feedback_to_owner(update, context, chat_id, lang)
+        return
     t_check = TEXTS[lang]
     _menu_buttons = {t_check["btn_my_tasks"].split("(")[0].strip(), t_check["btn_settings"],
                      t_check["btn_help"], t_check["btn_timezone"], t_check["btn_connect"]}
@@ -1251,6 +1285,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if voice.duration < 1:
         await update.message.reply_text(TEXTS[lang]["too_short"])
         return
+    if context.user_data.get("awaiting_feedback"):
+        context.user_data.pop("awaiting_feedback")
+        await _send_feedback_to_owner(update, context, chat_id, lang)
+        return
     transcribing_msg = await update.message.reply_text(TEXTS[lang]["transcribing"])
     cleanup_ids = [update.message.message_id, transcribing_msg.message_id]
     log_event(chat_id, "voice_task")
@@ -1313,6 +1351,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             TEXTS[lang]["connect_link"],
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Google Calendar", url=auth_url)]])
         )
+        return
+    if data == "settings_feedback":
+        await query.edit_message_reply_markup(reply_markup=None)
+        context.user_data["awaiting_feedback"] = True
+        await query.message.reply_text(TEXTS[lang]["feedback_prompt"])
         return
     if data == "settings_help":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -1801,6 +1844,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
+    keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
     keyboard_rows.append([
         InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
         InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")
