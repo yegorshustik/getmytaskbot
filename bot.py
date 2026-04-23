@@ -1553,7 +1553,11 @@ async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def get_stats_data(days=7):
     conn = sqlite3.connect("users.db")
     now = datetime.utcnow()
-    since = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    # days=0 means "all time"
+    if days == 0:
+        since = "2000-01-01 00:00:00"
+    else:
+        since = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     day_ago = (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     total_users = conn.execute("SELECT COUNT(*) FROM users WHERE lang IS NOT NULL").fetchone()[0]
     cal_users   = conn.execute("SELECT COUNT(*) FROM users WHERE calendar_connected=1").fetchone()[0]
@@ -1564,19 +1568,32 @@ def get_stats_data(days=7):
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
     text_total  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='text_task' AND created_at >= ?", (since,)).fetchone()[0]
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
-    # Daily breakdown for sparkline (last `days` days)
-    daily = []
-    for i in range(days - 1, -1, -1):
-        d_start = (now - timedelta(days=i+1)).strftime("%Y-%m-%d %H:%M:%S")
-        d_end   = (now - timedelta(days=i)).strftime("%Y-%m-%d %H:%M:%S")
-        cnt = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ? AND created_at < ?", (d_start, d_end)).fetchone()[0]
-        label = (now - timedelta(days=i)).strftime("%d.%m")
-        daily.append((label, cnt))
+    # Chart: daily for ≤30 days, monthly for 90 days or all time
+    use_monthly = (days == 0 or days >= 90)
+    if use_monthly:
+        rows = conn.execute(
+            "SELECT strftime('%Y-%m', created_at) as mo, COUNT(DISTINCT chat_id) "
+            "FROM events WHERE created_at >= ? GROUP BY mo ORDER BY mo",
+            (since,)
+        ).fetchall()
+        chart_data = list(rows)
+    else:
+        chart_data = []
+        for i in range(days - 1, -1, -1):
+            d_start = (now - timedelta(days=i+1)).strftime("%Y-%m-%d %H:%M:%S")
+            d_end   = (now - timedelta(days=i)).strftime("%Y-%m-%d %H:%M:%S")
+            cnt = conn.execute(
+                "SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ? AND created_at < ?",
+                (d_start, d_end)
+            ).fetchone()[0]
+            label = (now - timedelta(days=i)).strftime("%d.%m")
+            chart_data.append((label, cnt))
     conn.close()
     return dict(total_users=total_users, cal_users=cal_users, dau=dau,
                 active=active, new_users=new_users, tasks_total=tasks_total,
                 voice_total=voice_total, text_total=text_total,
-                cal_connects=cal_connects, daily=daily, days=days)
+                cal_connects=cal_connects, chart_data=chart_data,
+                use_monthly=use_monthly, days=days)
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -1793,80 +1810,276 @@ async def google_verification(request):
 async def stats_page(request):
     try:
         days = int(request.rel_url.query.get("days", 7))
-        if days not in (7, 14, 30, 90):
+        if days not in (0, 7, 14, 30, 90):
             days = 7
     except ValueError:
         days = 7
     s = get_stats_data(days)
-    period_labels = {7: "7 дней", 14: "14 дней", 30: "30 дней", 90: "90 дней"}
-    tabs_html = "".join(
-        f'<a href="/stats?days={d}" class="tab{"active" if d == days else ""}">{period_labels[d]}</a>'
-        for d in (7, 14, 30, 90)
+    period_labels = {0: "Всё время", 7: "7 дней", 14: "14 дней", 30: "30 дней", 90: "90 дней"}
+    period_label = period_labels[days]
+
+    # Build tabs — avoid nested quotes in f-string for Python <3.12 compat
+    tabs_parts = []
+    for d in (7, 14, 30, 90, 0):
+        cls = "tab tab--active" if d == days else "tab"
+        tabs_parts.append(f'<a href="/stats?days={d}" class="{cls}">{period_labels[d]}</a>')
+    tabs_html = "".join(tabs_parts)
+
+    # Build bars
+    chart_data = s["chart_data"]
+    max_val = max((v for _, v in chart_data), default=1) or 1
+    bars_parts = []
+    for lbl, v in chart_data:
+        height = max(4, int(v / max_val * 140))
+        val_str = str(v) if v > 0 else ""
+        bars_parts.append(
+            f'<div class="bar-col">'
+            f'<span class="bar-val">{val_str}</span>'
+            f'<div class="bar" style="height:{height}px"></div>'
+            f'<div class="bar-lbl">{lbl}</div>'
+            f'</div>'
+        )
+    bars_html = "".join(bars_parts)
+    chart_heading = "Активных пользователей по месяцам" if s["use_monthly"] else "Активных пользователей по дням"
+    chart_block = (
+        f'<div class="chart-inner">{bars_html}</div>'
+        if chart_data else
+        '<div class="no-data">Нет данных за этот период</div>'
     )
-    max_daily = max((v for _, v in s["daily"]), default=1) or 1
-    bars_html = "".join(
-        f'<div class="bar-wrap"><div class="bar" style="height:{max(4, int(v/max_daily*100))}%" title="{v}"></div><div class="bar-lbl">{lbl}</div></div>'
-        for lbl, v in s["daily"]
-    )
+
     html = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Stats — Get My Task</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Analytics — Get My Task</title>
   <style>
-    *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-         background:#0f0f0f;color:#e0e0e0;padding:32px 20px}}
-    .wrap{{max-width:760px;margin:0 auto}}
-    h1{{font-size:1.6rem;font-weight:700;color:#fff;margin-bottom:4px}}
-    .sub{{color:#555;font-size:.82rem;margin-bottom:24px}}
-    .tabs{{display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap}}
-    .tab{{padding:7px 18px;border-radius:20px;font-size:.85rem;font-weight:600;
-          text-decoration:none;background:#1a1a1a;color:#888;border:1px solid #2a2a2a;transition:.15s}}
-    .tab:hover{{color:#fff}} .tabactive{{background:#229ED9;color:#fff;border-color:#229ED9}}
-    .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px}}
-    .card{{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:18px}}
-    .card .val{{font-size:1.9rem;font-weight:700;color:#fff;line-height:1}}
-    .card .lbl{{font-size:.78rem;color:#555;margin-top:5px}}
-    h2{{font-size:.8rem;font-weight:600;color:#555;margin:24px 0 12px;text-transform:uppercase;letter-spacing:.06em}}
-    .chart{{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px 16px 10px;margin-bottom:28px}}
-    .bars{{display:flex;align-items:flex-end;gap:4px;height:80px}}
-    .bar-wrap{{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}}
-    .bar{{width:100%;background:#229ED9;border-radius:3px 3px 0 0;min-height:4px;transition:.2s}}
-    .bar-lbl{{font-size:.6rem;color:#444;white-space:nowrap}}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      padding: 36px 20px 64px;
+    }}
+    .wrap {{ max-width: 840px; margin: 0 auto; }}
+
+    /* ── Header ─────────────────────────── */
+    .hdr {{ display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }}
+    .hdr-icon {{ font-size: 1.7rem; }}
+    h1 {{ font-size: 1.45rem; font-weight: 700; color: #fff; }}
+    .sub {{ color: #7d8590; font-size: 0.8rem; margin-bottom: 28px; }}
+
+    /* ── Period tabs ────────────────────── */
+    .tabs-wrap {{
+      display: inline-flex;
+      align-items: center;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 999px;
+      padding: 4px;
+      gap: 2px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }}
+    .tab {{
+      padding: 7px 20px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #7d8590;
+      text-decoration: none;
+      transition: color 0.15s, background 0.15s;
+      white-space: nowrap;
+    }}
+    .tab:hover {{ color: #e6edf3; background: #21262d; }}
+    .tab--active {{
+      background: #1f6feb;
+      color: #fff !important;
+      box-shadow: 0 0 0 1px rgba(31,111,235,.4), 0 2px 10px rgba(31,111,235,.35);
+    }}
+
+    /* ── Section label ──────────────────── */
+    .sec {{
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #7d8590;
+      margin: 0 0 10px;
+    }}
+
+    /* ── Metric grid ────────────────────── */
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }}
+    .card {{
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 18px 20px 16px;
+      position: relative;
+      overflow: hidden;
+    }}
+    .card::after {{
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 12px 12px 0 0;
+    }}
+    .card.c-blue::after   {{ background: #1f6feb; }}
+    .card.c-teal::after   {{ background: #39c5cf; }}
+    .card.c-green::after  {{ background: #3fb950; }}
+    .card.c-orange::after {{ background: #d29922; }}
+    .card.c-purple::after {{ background: #a371f7; }}
+    .card.c-pink::after   {{ background: #f778ba; }}
+    .card .val {{
+      font-size: 2.1rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      margin-bottom: 6px;
+    }}
+    .card .lbl {{
+      font-size: 0.76rem;
+      color: #7d8590;
+      line-height: 1.35;
+    }}
+
+    /* ── Chart ──────────────────────────── */
+    .chart-box {{
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px 20px 0;
+      margin-bottom: 28px;
+      overflow: hidden;
+    }}
+    .chart-title {{
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 18px;
+    }}
+    .chart-inner {{
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 180px;
+      padding-bottom: 28px;
+      position: relative;
+    }}
+    .bar-col {{
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      position: relative;
+      min-width: 0;
+    }}
+    .bar-val {{
+      font-size: 0.59rem;
+      color: #7d8590;
+      margin-bottom: 3px;
+      min-height: 13px;
+      line-height: 13px;
+    }}
+    .bar {{
+      width: 100%;
+      background: linear-gradient(180deg, #388bfd 0%, #1f6feb 100%);
+      border-radius: 4px 4px 0 0;
+      min-height: 4px;
+      transition: opacity 0.15s;
+    }}
+    .bar:hover {{ opacity: 0.75; cursor: default; }}
+    .bar-lbl {{
+      position: absolute;
+      bottom: 4px;
+      left: 0; right: 0;
+      font-size: 0.57rem;
+      color: #7d8590;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .no-data {{
+      text-align: center;
+      color: #7d8590;
+      font-size: 0.9rem;
+      padding: 48px 0;
+    }}
   </style>
 </head>
-<body><div class="wrap">
-  <h1>📊 Get My Task</h1>
-  <p class="sub">Analytics dashboard · live data</p>
+<body>
+<div class="wrap">
 
-  <div class="tabs">{tabs_html}</div>
+  <div class="hdr">
+    <span class="hdr-icon">📊</span>
+    <h1>Get My Task — Analytics</h1>
+  </div>
+  <p class="sub">Live data · UTC · Auto-refresh on open</p>
 
-  <h2>Всего</h2>
+  <div class="tabs-wrap">{tabs_html}</div>
+
+  <p class="sec">Всего</p>
   <div class="grid">
-    <div class="card"><div class="val">{s['total_users']}</div><div class="lbl">Пользователей всего</div></div>
-    <div class="card"><div class="val">{s['cal_users']}</div><div class="lbl">Google Calendar подключён</div></div>
-    <div class="card"><div class="val">{s['dau']}</div><div class="lbl">Активных сегодня (DAU)</div></div>
+    <div class="card c-blue">
+      <div class="val">{s['total_users']}</div>
+      <div class="lbl">Пользователей всего</div>
+    </div>
+    <div class="card c-teal">
+      <div class="val">{s['cal_users']}</div>
+      <div class="lbl">Google Calendar подключён</div>
+    </div>
+    <div class="card c-green">
+      <div class="val">{s['dau']}</div>
+      <div class="lbl">Активных сегодня (DAU)</div>
+    </div>
   </div>
 
-  <h2>За {period_labels[days]}</h2>
+  <p class="sec">За {period_label}</p>
   <div class="grid">
-    <div class="card"><div class="val">{s['active']}</div><div class="lbl">Уникальных активных</div></div>
-    <div class="card"><div class="val">{s['new_users']}</div><div class="lbl">Новых пользователей</div></div>
-    <div class="card"><div class="val">{s['cal_connects']}</div><div class="lbl">Подключений Calendar</div></div>
+    <div class="card c-blue">
+      <div class="val">{s['active']}</div>
+      <div class="lbl">Уникальных активных</div>
+    </div>
+    <div class="card c-green">
+      <div class="val">{s['new_users']}</div>
+      <div class="lbl">Новых пользователей</div>
+    </div>
+    <div class="card c-orange">
+      <div class="val">{s['cal_connects']}</div>
+      <div class="lbl">Подключений Calendar</div>
+    </div>
+    <div class="card c-purple">
+      <div class="val">{s['tasks_total']}</div>
+      <div class="lbl">Задач создано</div>
+    </div>
+    <div class="card c-pink">
+      <div class="val">{s['voice_total']}</div>
+      <div class="lbl">Голосовых задач</div>
+    </div>
+    <div class="card c-teal">
+      <div class="val">{s['text_total']}</div>
+      <div class="lbl">Текстовых задач</div>
+    </div>
   </div>
 
-  <h2>Задачи за {period_labels[days]}</h2>
-  <div class="grid">
-    <div class="card"><div class="val">{s['tasks_total']}</div><div class="lbl">Задач создано</div></div>
-    <div class="card"><div class="val">{s['voice_total']}</div><div class="lbl">Голосовых</div></div>
-    <div class="card"><div class="val">{s['text_total']}</div><div class="lbl">Текстовых</div></div>
+  <div class="chart-box">
+    <div class="chart-title">{chart_heading}</div>
+    {chart_block}
   </div>
 
-  <h2>Активные пользователи по дням</h2>
-  <div class="chart"><div class="bars">{bars_html}</div></div>
-
-</div></body></html>"""
+</div>
+</body>
+</html>"""
     return web.Response(text=html, content_type="text/html", charset="utf-8")
 
 PRIVACY_POLICY_HTML = """<!DOCTYPE html>
