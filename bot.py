@@ -2,6 +2,9 @@ import os
 import io
 import uuid
 import json
+import base64
+import hashlib
+import secrets
 import logging
 import sqlite3
 import asyncio
@@ -67,6 +70,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS oauth_states (
             state TEXT PRIMARY KEY,
             chat_id INTEGER,
+            code_verifier TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         )
     """)
@@ -104,6 +108,11 @@ def init_db():
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
         except sqlite3.OperationalError:
             pass
+    # Migrate oauth_states: add code_verifier column if missing
+    try:
+        c.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -581,22 +590,32 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
 
 # ─── OAuth ────────────────────────────────────────────────────────────────────
 
-def save_oauth_state(state, chat_id):
+def save_oauth_state(state, chat_id, code_verifier=None):
     conn = sqlite3.connect("users.db")
     conn.execute("DELETE FROM oauth_states WHERE created_at < datetime('now', '-1 hour')")  # cleanup old
-    conn.execute("INSERT OR REPLACE INTO oauth_states (state, chat_id) VALUES (?, ?)", (state, chat_id))
+    conn.execute(
+        "INSERT OR REPLACE INTO oauth_states (state, chat_id, code_verifier) VALUES (?, ?, ?)",
+        (state, chat_id, code_verifier)
+    )
     conn.commit()
     conn.close()
 
 def pop_oauth_state(state):
-    """Returns chat_id for state and deletes it, or None if not found."""
+    """Returns (chat_id, code_verifier) for state and deletes it, or (None, None) if not found."""
     conn = sqlite3.connect("users.db")
-    row = conn.execute("SELECT chat_id FROM oauth_states WHERE state=?", (state,)).fetchone()
+    row = conn.execute("SELECT chat_id, code_verifier FROM oauth_states WHERE state=?", (state,)).fetchone()
     if row:
         conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
         conn.commit()
     conn.close()
-    return row[0] if row else None
+    return (row[0], row[1]) if row else (None, None)
+
+def _pkce_pair():
+    """Generate a PKCE code_verifier and corresponding S256 code_challenge."""
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(96)).rstrip(b"=").decode()
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return verifier, challenge
 
 def get_auth_url(chat_id):
     flow = Flow.from_client_secrets_file(
@@ -604,8 +623,15 @@ def get_auth_url(chat_id):
         scopes=SCOPES,
         redirect_uri=f"{BASE_URL}/oauth/callback"
     )
-    auth_url, state = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
-    save_oauth_state(state, chat_id)
+    code_verifier, code_challenge = _pkce_pair()
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true",
+        code_challenge=code_challenge,
+        code_challenge_method="S256",
+    )
+    save_oauth_state(state, chat_id, code_verifier=code_verifier)
     return auth_url
 
 
@@ -1695,7 +1721,7 @@ async def oauth_callback(request):
     code = request.rel_url.query.get("code")
     if not state:
         return web.Response(text="Invalid state", status=400)
-    chat_id = pop_oauth_state(state)
+    chat_id, code_verifier = pop_oauth_state(state)
     if not chat_id:
         return web.Response(text="Session expired. Please connect calendar again in the bot.", status=400)
     flow = Flow.from_client_secrets_file(
@@ -1704,7 +1730,10 @@ async def oauth_callback(request):
         redirect_uri=f"{BASE_URL}/oauth/callback",
         state=state
     )
-    flow.fetch_token(code=code)
+    fetch_kwargs = {"code": code}
+    if code_verifier:
+        fetch_kwargs["code_verifier"] = code_verifier
+    flow.fetch_token(**fetch_kwargs)
     creds = flow.credentials
     save_user(chat_id, calendar_token=creds.to_json(), calendar_connected=1)
     log_event(chat_id, "calendar_connected")
