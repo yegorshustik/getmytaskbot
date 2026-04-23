@@ -557,7 +557,7 @@ def get_auth_url(chat_id):
         scopes=SCOPES,
         redirect_uri=f"{BASE_URL}/oauth/callback"
     )
-    auth_url, state = flow.authorization_url(access_type="offline", include_granted_scopes="true")
+    auth_url, state = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
     pending_oauth[state] = {"chat_id": chat_id, "flow": flow}
     return auth_url
 
