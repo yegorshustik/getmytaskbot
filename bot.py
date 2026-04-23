@@ -36,6 +36,24 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ─── Feedback Limits ──────────────────────────────────────────────────────────
+_FEEDBACK_COOLDOWN_SEC = 3600   # 1 hour between feedback messages
+_FEEDBACK_MAX_TEXT_LEN = 1000   # max characters for text feedback
+_feedback_last_sent: dict[int, float] = {}
+
+def check_feedback_cooldown(chat_id: int) -> tuple[bool, int]:
+    """Returns (allowed, minutes_remaining)."""
+    now = _time.monotonic()
+    last = _feedback_last_sent.get(chat_id, 0)
+    elapsed = now - last
+    if elapsed < _FEEDBACK_COOLDOWN_SEC:
+        remaining_min = int((_FEEDBACK_COOLDOWN_SEC - elapsed) / 60) + 1
+        return False, remaining_min
+    return True, 0
+
+def mark_feedback_sent(chat_id: int):
+    _feedback_last_sent[chat_id] = _time.monotonic()
+
 # ─── Rate Limiting ─────────────────────────────────────────────────────────────
 _RATE_LIMIT_MAX = 10       # max AI requests
 _RATE_LIMIT_WINDOW = 60    # per N seconds
@@ -219,6 +237,8 @@ TEXTS = {
         "transcribing": "Транскрибирую голосовое...",
         "recognized": "Распознал: ",
         "rate_limit": "⚠️ Слишком много запросов. Подождите минуту и попробуйте снова.",
+        "feedback_too_long": f"⚠️ Сообщение слишком длинное. Максимум {_FEEDBACK_MAX_TEXT_LEN} символов.",
+        "feedback_cooldown": "⏳ Вы уже отправляли сообщение. Следующее можно отправить через {{min}} мин.",
         "too_long": "⚠️ Голосовое слишком длинное (больше 60 сек). Запишите несколько коротких сообщений.",
         "too_short": "⚠️ Сообщение слишком короткое. Попробуйте записать подробнее.",
         "no_text": "⚠️ Не удалось распознать речь. Проверьте качество записи и попробуйте снова.",
@@ -334,6 +354,8 @@ TEXTS = {
         "transcribing": "Transcribing voice message...",
         "recognized": "Recognized: ",
         "rate_limit": "⚠️ Too many requests. Please wait a minute and try again.",
+        "feedback_too_long": f"⚠️ Message is too long. Maximum {_FEEDBACK_MAX_TEXT_LEN} characters.",
+        "feedback_cooldown": "⏳ You've already sent a message. You can send another in {{min}} min.",
         "too_long": "⚠️ Voice message is too long (over 60 sec). Please record shorter messages.",
         "too_short": "⚠️ Message is too short. Try recording with more detail.",
         "no_text": "⚠️ Could not recognize speech. Check audio quality and try again.",
@@ -449,6 +471,8 @@ TEXTS = {
         "transcribing": "Транскрибую голосове...",
         "recognized": "Розпізнав: ",
         "rate_limit": "⚠️ Забагато запитів. Зачекайте хвилину і спробуйте знову.",
+        "feedback_too_long": f"⚠️ Повідомлення занадто довге. Максимум {_FEEDBACK_MAX_TEXT_LEN} символів.",
+        "feedback_cooldown": "⏳ Ви вже надсилали повідомлення. Наступне можна надіслати через {{min}} хв.",
         "too_long": "⚠️ Голосове занадто довге (більше 60 сек). Запишіть кілька коротких повідомлень.",
         "too_short": "⚠️ Повідомлення занадто коротке. Спробуйте записати детальніше.",
         "no_text": "⚠️ Не вдалося розпізнати мову. Перевірте якість запису і спробуйте знову.",
@@ -1477,6 +1501,17 @@ async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def _send_feedback_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, lang: str):
+    t = TEXTS[lang]
+    # Cooldown check
+    allowed, remaining_min = check_feedback_cooldown(chat_id)
+    if not allowed:
+        await update.message.reply_text(t["feedback_cooldown"].format(min=remaining_min))
+        return
+    # Text length check
+    if update.message.text and len(update.message.text) > _FEEDBACK_MAX_TEXT_LEN:
+        await update.message.reply_text(t["feedback_too_long"])
+        return
+    mark_feedback_sent(chat_id)
     tg_user = update.effective_user
     name = (tg_user.full_name or "—") if tg_user else "—"
     username = tg_user.username or "нет" if tg_user else "—"
@@ -1652,6 +1687,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     if data == "settings_feedback":
+        allowed, remaining_min = check_feedback_cooldown(chat_id)
+        if not allowed:
+            await query.answer(TEXTS[lang]["feedback_cooldown"].format(min=remaining_min), show_alert=True)
+            return
         await query.edit_message_reply_markup(reply_markup=None)
         context.user_data["awaiting_feedback"] = True
         await query.message.reply_text(TEXTS[lang]["feedback_prompt"])
