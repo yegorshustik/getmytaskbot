@@ -1103,6 +1103,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user["lang"]
     user_text = update.message.text.strip()
     if context.user_data.get("awaiting_timezone"):
+        onboarding = context.user_data.pop("timezone_onboarding", False)
         context.user_data.pop("awaiting_timezone")
         try:
             ZoneInfo(user_text)
@@ -1110,6 +1111,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 TEXTS[lang]["timezone_set"].format(tz=user_text), parse_mode="Markdown"
             )
+            if onboarding:
+                updated_user = get_user(chat_id)
+                await update.message.reply_text(
+                    TEXTS[lang]["lang_set"],
+                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+                )
         except (ZoneInfoNotFoundError, KeyError):
             await update.message.reply_text(TEXTS[lang]["timezone_invalid"], parse_mode="Markdown")
         return
@@ -1215,10 +1222,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_user(chat_id, lang=lang)
         await query.edit_message_reply_markup(reply_markup=None)
         updated_user = get_user(chat_id)
-        await query.message.reply_text(
-            TEXTS[lang]["lang_set"],
-            reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
-        )
+        # If this is a new user (no timezone set yet), ask for timezone before showing menu
+        if not updated_user or updated_user.get("timezone") == "Europe/Moscow":
+            await show_timezone_menu(query.message, chat_id, lang, onboarding=True)
+        else:
+            await query.message.reply_text(
+                TEXTS[lang]["lang_set"],
+                reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+            )
         return
     if data == "connect_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -1336,16 +1347,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data.startswith("tz_"):
         await query.edit_message_reply_markup(reply_markup=None)
-        if data == "tz_manual":
+        onboarding = data.endswith("_ob")
+        clean_data = data[:-3] if onboarding else data  # strip _ob suffix
+        if clean_data in ("tz_manual", "tz_manual_ob"):
             context.user_data["awaiting_timezone"] = True
+            context.user_data["timezone_onboarding"] = onboarding
             await query.message.reply_text(TEXTS[lang]["timezone_prompt"], parse_mode="Markdown")
         else:
-            idx_tz = int(data[3:])
+            idx_tz = int(clean_data[3:])
             tz_name = POPULAR_TIMEZONES[idx_tz][1]
             save_user(chat_id, timezone=tz_name)
             await query.message.reply_text(
                 TEXTS[lang]["timezone_set"].format(tz=tz_name), parse_mode="Markdown"
             )
+            if onboarding:
+                updated_user = get_user(chat_id)
+                await query.message.reply_text(
+                    TEXTS[lang]["lang_set"],
+                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+                )
         return
     if data.startswith("ics_"):
         idx = int(data[4:])
@@ -1466,18 +1486,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-async def show_timezone_menu(message, chat_id, lang):
+async def show_timezone_menu(message, chat_id, lang, onboarding=False):
     user = get_user(chat_id)
     current_tz = user["timezone"] if user else "Europe/Moscow"
     rows = []
     for i in range(0, len(POPULAR_TIMEZONES), 2):
-        row = [InlineKeyboardButton(POPULAR_TIMEZONES[i][0], callback_data=f"tz_{i}")]
+        row = [InlineKeyboardButton(POPULAR_TIMEZONES[i][0], callback_data=f"tz_{i}{'_ob' if onboarding else ''}")]
         if i + 1 < len(POPULAR_TIMEZONES):
-            row.append(InlineKeyboardButton(POPULAR_TIMEZONES[i + 1][0], callback_data=f"tz_{i+1}"))
+            row.append(InlineKeyboardButton(POPULAR_TIMEZONES[i + 1][0], callback_data=f"tz_{i+1}{'_ob' if onboarding else ''}"))
         rows.append(row)
-    rows.append([InlineKeyboardButton(TEXTS[lang]["timezone_manual"], callback_data="tz_manual")])
+    rows.append([InlineKeyboardButton(TEXTS[lang]["timezone_manual"], callback_data=f"tz_manual{'_ob' if onboarding else ''}")])
+    prompt = {
+        "ru": "🌍 Укажи свой часовой пояс — это нужно для точных напоминаний:",
+        "en": "🌍 Choose your timezone — needed for accurate reminders:",
+        "uk": "🌍 Вкажи свій часовий пояс — це потрібно для точних нагадувань:",
+    }
+    text = prompt.get(lang, prompt["ru"]) if onboarding else TEXTS[lang]["timezone_current"].format(tz=current_tz)
     await message.reply_text(
-        TEXTS[lang]["timezone_current"].format(tz=current_tz),
+        text,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(rows)
     )
@@ -1552,9 +1578,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
     else:
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+    current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([
         InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
-        InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")
+        InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")
     ])
     await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
 
