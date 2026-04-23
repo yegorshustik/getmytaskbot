@@ -1124,6 +1124,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lang = user["lang"]
     user_text = update.message.text.strip()
+    t_check = TEXTS[lang]
+    _menu_buttons = {t_check["btn_my_tasks"].split("(")[0].strip(), t_check["btn_settings"],
+                     t_check["btn_help"], t_check["btn_timezone"], t_check["btn_connect"]}
+    if context.user_data.get("awaiting_timezone") and any(user_text.startswith(b) for b in _menu_buttons):
+        context.user_data.pop("awaiting_timezone", None)
+        context.user_data.pop("timezone_onboarding", None)
     if context.user_data.get("awaiting_timezone"):
         onboarding = context.user_data.pop("timezone_onboarding", False)
         context.user_data.pop("awaiting_timezone")
