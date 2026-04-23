@@ -154,6 +154,7 @@ TEXTS = {
         "added_btn": "📅 Открыть в Calendar",
         "task_saved": "✅ _Задача сохранена_",
         "task_skipped": "❌ _Задача не сохранена_",
+        "skip_invite": "🎙 Надиктуй следующую задачу или напиши текстом",
         "task_time_past": "⚠️ Указанное время уже прошло. Уточните, пожалуйста, когда именно нужно выполнить задачу.",
         "calendar_error": "Ошибка Calendar: ",
         "error": "Ошибка: ",
@@ -244,6 +245,7 @@ TEXTS = {
         "added_btn": "📅 Open in Calendar",
         "task_saved": "✅ _Task saved_",
         "task_skipped": "❌ _Task not saved_",
+        "skip_invite": "🎙 Dictate your next task or type it",
         "task_time_past": "⚠️ The specified time has already passed. Please clarify when exactly you need to complete this task.",
         "calendar_error": "Calendar error: ",
         "error": "Error: ",
@@ -334,6 +336,7 @@ TEXTS = {
         "added_btn": "📅 Відкрити в Calendar",
         "task_saved": "✅ _Задачу збережено_",
         "task_skipped": "❌ _Задачу не збережено_",
+        "skip_invite": "🎙 Надиктуй наступну задачу або напиши текстом",
         "task_time_past": "⚠️ Вказаний час вже минув. Уточніть, будь ласка, коли саме потрібно виконати задачу.",
         "calendar_error": "Помилка Calendar: ",
         "error": "Помилка: ",
@@ -917,7 +920,7 @@ def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
     )
     return ics.encode("utf-8")
 
-async def show_tasks(update, chat_id, tasks, lang):
+async def show_tasks(update, chat_id, tasks, lang, context=None):
     user = get_user(chat_id)
     for i, task in enumerate(tasks):
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
@@ -947,7 +950,12 @@ async def show_tasks(update, chat_id, tasks, lang):
                 apple_row,
                 save_skip_row,
             ])
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        # Store all message_ids needed for skip-cleanup in the task itself
+        if context is not None:
+            cleanup = list(context.user_data.get("_cleanup_ids", []))
+            cleanup.append(card_msg.message_id)
+            tasks[i]["_cleanup_ids"] = cleanup
 
 async def offer_calendar(update, chat_id, lang):
     keyboard = InlineKeyboardMarkup([[
@@ -1038,7 +1046,7 @@ async def process_and_show(update, context, text, chat_id, lang):
     if not valid_tasks:
         return
     context.user_data["tasks"] = valid_tasks
-    await show_tasks(update, chat_id, valid_tasks, lang)
+    await show_tasks(update, chat_id, valid_tasks, lang, context=context)
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -1135,7 +1143,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(user_text) < 3:
         await update.message.reply_text(t["too_short"])
         return
-    await update.message.reply_text(t["processing"])
+    proc_msg = await update.message.reply_text(t["processing"])
+    context.user_data["_cleanup_ids"] = [update.message.message_id, proc_msg.message_id]
     try:
         await process_and_show(update, context, user_text, chat_id, lang)
     except Exception as e:
@@ -1156,7 +1165,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if voice.duration < 1:
         await update.message.reply_text(TEXTS[lang]["too_short"])
         return
-    await update.message.reply_text(TEXTS[lang]["transcribing"])
+    transcribing_msg = await update.message.reply_text(TEXTS[lang]["transcribing"])
+    cleanup_ids = [update.message.message_id, transcribing_msg.message_id]
     try:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp_path = tmp.name
@@ -1172,7 +1182,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text or len(text) < 5:
             await update.message.reply_text(TEXTS[lang]["no_text"])
             return
-        await update.message.reply_text(TEXTS[lang]["recognized"] + text)
+        recognized_msg = await update.message.reply_text(TEXTS[lang]["recognized"] + text)
+        cleanup_ids.append(recognized_msg.message_id)
+        context.user_data["_cleanup_ids"] = cleanup_ids
         if "pending_task" in context.user_data:
             await handle_reschedule(update, context, text, chat_id, lang)
             return
@@ -1435,7 +1447,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user(chat_id, first_task_done=1)
             await ask_reminder_minutes(query.message, chat_id, lang)
     elif action == "skip":
-        await query.message.delete()
+        # Delete task card + original user message + "Обрабатываю..."
+        cleanup_ids = task.get("_cleanup_ids", [query.message.message_id])
+        for msg_id in cleanup_ids:
+            try:
+                await context.bot.delete_message(chat_id, msg_id)
+            except Exception:
+                pass
+        await context.bot.send_message(chat_id, TEXTS[lang]["skip_invite"])
 
 async def show_timezone_menu(message, chat_id, lang):
     user = get_user(chat_id)
