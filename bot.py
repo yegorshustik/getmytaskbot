@@ -22,6 +22,9 @@ from googleapiclient.discovery import build
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 
+from collections import defaultdict, deque
+import time as _time
+
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -32,6 +35,23 @@ BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "114978994"))
 groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ─── Rate Limiting ─────────────────────────────────────────────────────────────
+_RATE_LIMIT_MAX = 10       # max AI requests
+_RATE_LIMIT_WINDOW = 60    # per N seconds
+_rate_store: dict[int, deque] = defaultdict(deque)
+
+def check_rate_limit(chat_id: int) -> bool:
+    """Returns True if allowed, False if rate limited."""
+    now = _time.monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW
+    dq = _rate_store[chat_id]
+    while dq and dq[0] < cutoff:
+        dq.popleft()
+    if len(dq) >= _RATE_LIMIT_MAX:
+        return False
+    dq.append(now)
+    return True
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
@@ -198,6 +218,7 @@ TEXTS = {
         "processing": "Обрабатываю...",
         "transcribing": "Транскрибирую голосовое...",
         "recognized": "Распознал: ",
+        "rate_limit": "⚠️ Слишком много запросов. Подождите минуту и попробуйте снова.",
         "too_long": "⚠️ Голосовое слишком длинное (больше 60 сек). Запишите несколько коротких сообщений.",
         "too_short": "⚠️ Сообщение слишком короткое. Попробуйте записать подробнее.",
         "no_text": "⚠️ Не удалось распознать речь. Проверьте качество записи и попробуйте снова.",
@@ -312,6 +333,7 @@ TEXTS = {
         "processing": "Processing...",
         "transcribing": "Transcribing voice message...",
         "recognized": "Recognized: ",
+        "rate_limit": "⚠️ Too many requests. Please wait a minute and try again.",
         "too_long": "⚠️ Voice message is too long (over 60 sec). Please record shorter messages.",
         "too_short": "⚠️ Message is too short. Try recording with more detail.",
         "no_text": "⚠️ Could not recognize speech. Check audio quality and try again.",
@@ -426,6 +448,7 @@ TEXTS = {
         "processing": "Обробляю...",
         "transcribing": "Транскрибую голосове...",
         "recognized": "Розпізнав: ",
+        "rate_limit": "⚠️ Забагато запитів. Зачекайте хвилину і спробуйте знову.",
         "too_long": "⚠️ Голосове занадто довге (більше 60 сек). Запишіть кілька коротких повідомлень.",
         "too_short": "⚠️ Повідомлення занадто коротке. Спробуйте записати детальніше.",
         "no_text": "⚠️ Не вдалося розпізнати мову. Перевірте якість запису і спробуйте знову.",
@@ -1532,6 +1555,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(user_text) < 3:
         await update.message.reply_text(t["too_short"])
         return
+    if not check_rate_limit(chat_id):
+        await update.message.reply_text(t["rate_limit"])
+        return
     proc_msg = await update.message.reply_text(t["processing"])
     context.user_data["_cleanup_ids"] = [update.message.message_id, proc_msg.message_id]
     log_event(chat_id, "text_task")
@@ -1558,6 +1584,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("awaiting_feedback"):
         context.user_data.pop("awaiting_feedback")
         await _send_feedback_to_owner(update, context, chat_id, lang)
+        return
+    if not check_rate_limit(chat_id):
+        await update.message.reply_text(TEXTS[lang]["rate_limit"])
         return
     transcribing_msg = await update.message.reply_text(TEXTS[lang]["transcribing"])
     cleanup_ids = [update.message.message_id, transcribing_msg.message_id]
