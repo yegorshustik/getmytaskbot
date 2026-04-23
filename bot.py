@@ -1161,16 +1161,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
         )
         return
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
-        InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
-        InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
-    ]])
+    # Auto-detect language from Telegram settings
+    tg_lang = (update.effective_user.language_code or "en").lower()
+    if tg_lang.startswith("ru"):
+        lang = "ru"
+    elif tg_lang.startswith("uk"):
+        lang = "uk"
+    else:
+        lang = "en"
+    save_user(chat_id, lang=lang)
+    log_event(chat_id, "new_user")
+    updated_user = get_user(chat_id)
     await update.message.reply_text(
-        "👋 Welcome to Get My Task!\n\n"
-        "I turn your voice notes and text into structured tasks — classified by priority, scheduled, and synced with your Google Calendar.\n\n"
-        "To get started, please choose your language:",
-        reply_markup=keyboard
+        TEXTS[lang]["lang_set"],
+        reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
     )
 
 async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
