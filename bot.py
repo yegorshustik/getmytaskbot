@@ -80,6 +80,7 @@ def init_db():
         ("description", "TEXT DEFAULT ''"),
         ("quadrant_name", "TEXT DEFAULT ''"),
         ("done", "INTEGER DEFAULT 0"),
+        ("synced_to_calendar", "INTEGER DEFAULT 0"),
     ]:
         try:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
@@ -518,14 +519,14 @@ def add_to_calendar(chat_id, task):
         }
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
-    save_task_to_db(chat_id, task)
+    save_task_to_db(chat_id, task, synced_to_calendar=1)
     return result.get("htmlLink")
 
-def save_task_to_db(chat_id, task):
+def save_task_to_db(chat_id, task, synced_to_calendar=0):
     conn = sqlite3.connect("users.db")
     conn.execute(
-        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done) VALUES (?,?,?,?,?,?,?,0)",
-        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""))
+        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar) VALUES (?,?,?,?,?,?,?,0,?)",
+        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar)
     )
     conn.commit()
     conn.close()
@@ -666,6 +667,7 @@ async def check_task_reminders():
                 """SELECT id, title, suggested_date, suggested_time FROM tasks
                    WHERE chat_id=?
                    AND suggested_time IS NOT NULL
+                   AND synced_to_calendar = 0
                    AND (suggested_date > ? OR (suggested_date = ? AND suggested_time >= ?))
                    AND (suggested_date < ? OR (suggested_date = ? AND suggested_time <= ?))""",
                 (chat_id, lo_date, lo_date, lo_time, hi_date, hi_date, hi_time)
