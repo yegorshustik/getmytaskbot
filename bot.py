@@ -1656,6 +1656,9 @@ HOME_HTML = """<!DOCTYPE html>
 async def home_page(request):
     return web.Response(text=HOME_HTML, content_type="text/html", charset="utf-8")
 
+async def google_verification(request):
+    return web.Response(text="google-site-verification: googled2363927b56587ef.html", content_type="text/html", charset="utf-8")
+
 PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1749,6 +1752,7 @@ async def privacy_policy(request):
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", home_page)
+    app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
     app.router.add_get("/privacy", privacy_policy)
     runner = web.AppRunner(app)
