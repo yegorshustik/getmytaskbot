@@ -155,11 +155,20 @@ def get_user(chat_id):
         }
     return None
 
+_ALLOWED_USER_COLS = {
+    "lang", "calendar_token", "first_task_done", "calendar_connected",
+    "timezone", "reminder_time", "reminder_enabled", "reminder_before",
+    "reminder_minutes", "pending_task_json", "last_active",
+}
+
 def save_user(chat_id, **kwargs):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("INSERT OR IGNORE INTO users (chat_id) VALUES (?)", (chat_id,))
     for key, val in kwargs.items():
+        if key not in _ALLOWED_USER_COLS:
+            logger.warning(f"save_user: ignoring unknown column '{key}'")
+            continue
         c.execute(f"UPDATE users SET {key} = ? WHERE chat_id = ?", (val, chat_id))
     conn.commit()
     conn.close()
@@ -579,8 +588,13 @@ def get_calendar_service_for_user(chat_id):
         return None
     creds = Credentials.from_authorized_user_info(json.loads(user["calendar_token"]), SCOPES)
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        save_user(chat_id, calendar_token=creds.to_json())
+        try:
+            creds.refresh(Request())
+            save_user(chat_id, calendar_token=creds.to_json())
+        except Exception as e:
+            logger.error(f"Token refresh failed for {chat_id}: {e}")
+            save_user(chat_id, calendar_token=None, calendar_connected=0)
+            return None
     return build("calendar", "v3", credentials=creds)
 
 def check_conflicts(service, date, time, timezone="Europe/Moscow"):
@@ -647,11 +661,12 @@ def describe_recurrence(recurrence: dict, lang: str) -> str:
     days = recurrence.get("days", [])
     if freq == "DAILY":
         return t["recurring_schedule_daily"]
-    if freq == "WEEKLY" and days:
-        names = t["recurring_day_names"]
-        day_str = ", ".join(names.get(d, d) for d in days)
+    if freq == "WEEKLY":
+        names = t.get("recurring_day_names", {})
+        day_str = ", ".join(names.get(d, d) for d in days) if days else t["recurring_schedule_daily"]
         return t["recurring_schedule_weekly"].format(days=day_str)
-    return ""
+    logger.warning(f"describe_recurrence: unknown freq '{freq}'")
+    return freq.lower()
 
 def add_recurring_to_calendar(chat_id, task):
     service = get_calendar_service_for_user(chat_id)
@@ -728,7 +743,11 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError as e:
+        logger.error(f"parse_time_correction JSON parse error: {e}\nRaw: {raw[:200]}")
+        return {"error": "unclear"}
 
 # ─── OAuth ────────────────────────────────────────────────────────────────────
 
@@ -812,7 +831,7 @@ async def check_reminders():
                     continue
                 try:
                     start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                except:
+                except (ValueError, AttributeError):
                     continue
                 reminders = event.get("reminders", {})
                 overrides = reminders.get("overrides", [])
@@ -904,72 +923,63 @@ async def sync_calendar_events():
             cal_event_ids = {e["id"] for e in cal_events}
 
             # ── Add new events not yet in bot DB ───────────────────────────
-            db = sqlite3.connect("users.db")
-            existing = {
-                row[0] for row in
-                db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL", (chat_id,)).fetchall()
-            }
-
-            for event in cal_events:
-                event_id = event["id"]
-                if event_id in existing:
-                    continue
-                title = event.get("summary", "—")
-                start = event.get("start", {})
-                if "dateTime" in start:
-                    dt = datetime.fromisoformat(start["dateTime"])
-                    suggested_date = dt.strftime("%Y-%m-%d")
-                    suggested_time = dt.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
-                else:
-                    suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
-                    suggested_time = None
-
-                task = {
-                    "title": title,
-                    "description": event.get("description", ""),
-                    "quadrant": "",
-                    "quadrant_name": "",
-                    "suggested_date": suggested_date,
-                    "suggested_time": suggested_time,
+            with sqlite3.connect("users.db") as db:
+                existing = {
+                    row[0] for row in
+                    db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL", (chat_id,)).fetchall()
                 }
-                db.execute(
-                    "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,1,?)",
-                    (chat_id, title, task["description"], "", "", suggested_date, suggested_time, event_id)
-                )
-                db.commit()
 
-                date_display = format_date(suggested_date, lang)
-                time_sep = _TIME_SEP.get(lang, " ")
-                date_str = date_display + (f"{time_sep}{suggested_time}" if suggested_time else "")
-                await bot_app.bot.send_message(
-                    chat_id=chat_id,
-                    text=TEXTS[lang]["cal_sync_new"].format(emoji="📌", title=title, date=date_str),
-                    parse_mode="Markdown"
-                )
+                for event in cal_events:
+                    event_id = event["id"]
+                    if event_id in existing:
+                        continue
+                    title = event.get("summary", "—")
+                    start = event.get("start", {})
+                    if "dateTime" in start:
+                        dt = datetime.fromisoformat(start["dateTime"])
+                        suggested_date = dt.strftime("%Y-%m-%d")
+                        suggested_time = dt.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
+                    else:
+                        suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
+                        suggested_time = None
 
-            # ── Remove tasks whose Calendar event was deleted ──────────────
-            tracked = db.execute(
-                "SELECT id, title, google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
-                (chat_id,)
-            ).fetchall()
+                    db.execute(
+                        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,1,?)",
+                        (chat_id, title, event.get("description", ""), "", "", suggested_date, suggested_time, event_id)
+                    )
+                    db.commit()
 
-            for task_id, title, event_id in tracked:
-                if event_id not in cal_event_ids:
-                    # Check if it's truly gone (event might be outside 3-day window but still future)
-                    try:
-                        service.events().get(calendarId="primary", eventId=event_id).execute()
-                        # Still exists (just outside 3-day window) — skip
-                    except Exception:
-                        # 404 or gone — delete from bot DB
-                        db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-                        db.commit()
-                        await bot_app.bot.send_message(
-                            chat_id=chat_id,
-                            text=TEXTS[lang]["cal_sync_removed"].format(title=title),
-                            parse_mode="Markdown"
-                        )
+                    date_display = format_date(suggested_date, lang)
+                    time_sep = _TIME_SEP.get(lang, " ")
+                    date_str = date_display + (f"{time_sep}{suggested_time}" if suggested_time else "")
+                    await bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        text=TEXTS[lang]["cal_sync_new"].format(emoji="📌", title=title, date=date_str),
+                        parse_mode="Markdown"
+                    )
 
-            db.close()
+                # ── Remove tasks whose Calendar event was deleted ──────────────
+                tracked = db.execute(
+                    "SELECT id, title, google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
+                    (chat_id,)
+                ).fetchall()
+
+                for task_id, title, event_id in tracked:
+                    if event_id not in cal_event_ids:
+                        # Check if it's truly gone (event might be outside 3-day window but still future)
+                        try:
+                            service.events().get(calendarId="primary", eventId=event_id).execute()
+                            # Still exists (just outside 3-day window) — skip
+                        except Exception:
+                            # 404 or gone — delete from bot DB
+                            db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+                            db.commit()
+                            await bot_app.bot.send_message(
+                                chat_id=chat_id,
+                                text=TEXTS[lang]["cal_sync_removed"].format(title=title),
+                                parse_mode="Markdown"
+                            )
+
         except Exception as e:
             logger.error(f"Calendar sync error for {chat_id}: {e}")
 
@@ -1020,7 +1030,8 @@ async def check_task_reminders():
             logger.error(f"Task reminder error for {chat_id}: {e}")
     conn.close()
 
-_morning_sent_today = {}  # chat_id -> date string
+# Morning digest deduplication stored in DB via sent_reminders table
+_MORNING_DIGEST_EVENT_ID = "__morning_digest__"
 
 async def send_morning_digests():
     conn = sqlite3.connect("users.db")
@@ -1035,9 +1046,9 @@ async def send_morning_digests():
             rtime = reminder_time or "08:00"
             if current_time != rtime:
                 continue
-            if _morning_sent_today.get(chat_id) == today:
+            if reminder_already_sent(chat_id, _MORNING_DIGEST_EVENT_ID, today):
                 continue
-            _morning_sent_today[chat_id] = today
+            mark_reminder_sent(chat_id, _MORNING_DIGEST_EVENT_ID, today)
             lang = lang or "ru"
             t = TEXTS[lang]
             # Digest: only tasks WITHOUT time (timed tasks get their own reminder)
@@ -1118,7 +1129,11 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError as e:
+        logger.error(f"process_text JSON parse error: {e}\nRaw: {raw[:200]}")
+        return []
 
 QUADRANT_EMOJI = {"Q1": "🔴", "Q2": "🟡", "Q3": "🔵", "Q4": "⚫"}
 
