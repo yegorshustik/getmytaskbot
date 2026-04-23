@@ -1602,6 +1602,60 @@ async def oauth_callback(request):
             pass
     return web.Response(text="✅ Calendar connected! You can close this tab.")
 
+HOME_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Get My Task — AI Task Manager for Telegram</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f0f0f;color:#e0e0e0;min-height:100vh;
+         display:flex;align-items:center;justify-content:center;padding:40px 20px}
+    .wrap{max-width:540px;text-align:center}
+    .icon{font-size:4rem;margin-bottom:16px}
+    h1{font-size:2.2rem;font-weight:700;color:#fff;margin-bottom:12px}
+    .sub{font-size:1.1rem;color:#aaa;margin-bottom:32px;line-height:1.6}
+    .btn{display:inline-block;background:#229ED9;color:#fff;font-size:1rem;
+         font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;
+         transition:opacity .2s}
+    .btn:hover{opacity:.85}
+    .features{display:flex;flex-direction:column;gap:12px;margin:40px 0;text-align:left}
+    .feat{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;
+          padding:14px 18px;font-size:.95rem;color:#ccc}
+    .feat span{margin-right:10px;font-size:1.1rem}
+    footer{margin-top:40px;font-size:.85rem;color:#555}
+    footer a{color:#555;text-decoration:none}
+    footer a:hover{color:#aaa}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="icon">🤖</div>
+  <h1>Get My Task</h1>
+  <p class="sub">Turn voice notes and text into structured tasks —<br/>
+  prioritised, scheduled, and synced with Google Calendar.</p>
+
+  <a class="btn" href="https://t.me/getmytask_bot">Open in Telegram →</a>
+
+  <div class="features">
+    <div class="feat"><span>🎙</span>Dictate tasks by voice — AI extracts title, date and priority</div>
+    <div class="feat"><span>📊</span>Eisenhower Matrix — tasks sorted by importance and urgency</div>
+    <div class="feat"><span>📅</span>Google Calendar sync — add tasks as events in one tap</div>
+    <div class="feat"><span>🔔</span>Smart reminders — get notified before each task</div>
+  </div>
+
+  <footer>
+    <a href="/privacy">Privacy Policy</a>
+  </footer>
+</div>
+</body>
+</html>"""
+
+async def home_page(request):
+    return web.Response(text=HOME_HTML, content_type="text/html", charset="utf-8")
+
 PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1694,6 +1748,7 @@ async def privacy_policy(request):
 
 async def start_web_server():
     app = web.Application()
+    app.router.add_get("/", home_page)
     app.router.add_get("/oauth/callback", oauth_callback)
     app.router.add_get("/privacy", privacy_policy)
     runner = web.AppRunner(app)
