@@ -1602,9 +1602,100 @@ async def oauth_callback(request):
             pass
     return web.Response(text="✅ Calendar connected! You can close this tab.")
 
+PRIVACY_POLICY_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy — Get My Task</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f0f0f;color:#e0e0e0;line-height:1.7;padding:40px 20px}
+    .wrap{max-width:720px;margin:0 auto}
+    h1{font-size:2rem;font-weight:700;margin-bottom:8px;color:#fff}
+    .sub{color:#888;font-size:.95rem;margin-bottom:40px}
+    h2{font-size:1.15rem;font-weight:600;color:#fff;margin:32px 0 10px}
+    p,li{color:#ccc;font-size:.97rem}
+    ul{padding-left:20px;margin-top:6px}
+    li{margin-bottom:4px}
+    a{color:#7c9ef5;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;
+          padding:24px;margin-top:40px;font-size:.9rem;color:#888}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Privacy Policy</h1>
+  <p class="sub">Get My Task Bot &nbsp;·&nbsp; Last updated: April 2026</p>
+
+  <h2>1. What we collect</h2>
+  <p>When you use Get My Task, we store the minimum data necessary to provide the service:</p>
+  <ul>
+    <li>Your Telegram user ID and language preference</li>
+    <li>Tasks you create (title, date, time, priority quadrant)</li>
+    <li>Google OAuth token (only if you choose to connect Google Calendar)</li>
+    <li>Timezone and reminder preferences</li>
+  </ul>
+
+  <h2>2. How we use your data</h2>
+  <ul>
+    <li>To create, store, and display your tasks</li>
+    <li>To add events to your Google Calendar on your request</li>
+    <li>To send reminders via Telegram</li>
+    <li>To transcribe voice messages using Groq Whisper API</li>
+  </ul>
+  <p>We do not sell, share, or use your data for advertising.</p>
+
+  <h2>3. Google Calendar access</h2>
+  <p>If you connect Google Calendar, we request the
+  <code>https://www.googleapis.com/auth/calendar</code> scope to create and read
+  calendar events. Your OAuth token is stored securely in our database and is
+  used solely to add tasks to your calendar. You can revoke access at any time
+  via <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>
+  or by using the Disconnect button in the bot settings.</p>
+
+  <h2>4. Third-party services</h2>
+  <ul>
+    <li><strong>Telegram</strong> — messaging platform (<a href="https://telegram.org/privacy" target="_blank">Privacy Policy</a>)</li>
+    <li><strong>Google Calendar API</strong> — calendar sync (<a href="https://policies.google.com/privacy" target="_blank">Privacy Policy</a>)</li>
+    <li><strong>Groq API</strong> — voice transcription (<a href="https://groq.com/privacy-policy/" target="_blank">Privacy Policy</a>)</li>
+  </ul>
+
+  <h2>5. Data retention</h2>
+  <p>Your data is stored as long as you use the bot. You can request deletion of
+  all your data at any time by contacting us. Disconnecting Google Calendar
+  immediately removes your OAuth token from our database.</p>
+
+  <h2>6. Security</h2>
+  <p>Data is stored on a private server with restricted access. OAuth tokens are
+  stored encrypted at rest. We do not log the content of your tasks beyond what
+  is necessary for the service to function.</p>
+
+  <h2>7. Your rights</h2>
+  <p>You have the right to access, correct, or delete your personal data. To
+  exercise these rights, contact us at the address below.</p>
+
+  <h2>8. Contact</h2>
+  <p>If you have any questions about this Privacy Policy, please contact:<br/>
+  <a href="mailto:hello.egour@gmail.com">hello.egour@gmail.com</a></p>
+
+  <div class="card">
+    Get My Task is an independent project and is not affiliated with Google,
+    Apple, or Telegram.
+  </div>
+</div>
+</body>
+</html>"""
+
+async def privacy_policy(request):
+    return web.Response(text=PRIVACY_POLICY_HTML, content_type="text/html", charset="utf-8")
+
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/oauth/callback", oauth_callback)
+    app.router.add_get("/privacy", privacy_policy)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)
