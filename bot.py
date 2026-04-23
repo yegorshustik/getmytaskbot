@@ -145,7 +145,8 @@ TEXTS = {
         "too_short": "⚠️ Сообщение слишком короткое. Попробуйте записать подробнее.",
         "no_text": "⚠️ Не удалось распознать речь. Проверьте качество записи и попробуйте снова.",
         "no_tasks": "⚠️ Не нашёл задач в сообщении. Опишите что нужно сделать.",
-        "add_calendar": "📅 В Calendar",
+        "add_calendar": "📅 Добавить в Google Calendar",
+        "apple_cal": "🍎 Добавить в Apple Calendar",
         "save": "✅ Сохранить",
         "skip": "❌ Пропустить",
         "adding": "⏳ Добавляю в Calendar...",
@@ -234,7 +235,8 @@ TEXTS = {
         "too_short": "⚠️ Message is too short. Try recording with more detail.",
         "no_text": "⚠️ Could not recognize speech. Check audio quality and try again.",
         "no_tasks": "⚠️ No tasks found in the message. Describe what needs to be done.",
-        "add_calendar": "📅 To Calendar",
+        "add_calendar": "📅 Add to Google Calendar",
+        "apple_cal": "🍎 Add to Apple Calendar",
         "save": "✅ Save",
         "skip": "❌ Skip",
         "adding": "⏳ Adding to Calendar...",
@@ -323,7 +325,8 @@ TEXTS = {
         "too_short": "⚠️ Повідомлення занадто коротке. Спробуйте записати детальніше.",
         "no_text": "⚠️ Не вдалося розпізнати мову. Перевірте якість запису і спробуйте знову.",
         "no_tasks": "⚠️ Не знайшов задач у повідомленні. Опишіть що потрібно зробити.",
-        "add_calendar": "📅 До Calendar",
+        "add_calendar": "📅 Додати до Google Calendar",
+        "apple_cal": "🍎 Додати до Apple Calendar",
         "save": "✅ Зберегти",
         "skip": "❌ Пропустити",
         "adding": "⏳ Додаю до Calendar...",
@@ -931,7 +934,7 @@ async def show_tasks(update, chat_id, tasks, lang):
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
             InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
         ]
-        apple_row = [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")]
+        apple_row = [InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")]
         if user and user["calendar_connected"]:
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
@@ -1572,7 +1575,7 @@ async def oauth_callback(request):
                 )
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data=f"add_{i}")],
-                    [InlineKeyboardButton("🍎 Add to Apple Cal", callback_data=f"ics_{i}")],
+                    [InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")],
                     [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
                      InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
                 ])
