@@ -1454,7 +1454,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.delete_message(chat_id, msg_id)
             except Exception:
                 pass
-        await context.bot.send_message(chat_id, TEXTS[lang]["skip_invite"])
 
 async def show_timezone_menu(message, chat_id, lang):
     user = get_user(chat_id)
