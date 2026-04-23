@@ -103,11 +103,13 @@ def init_db():
         ("quadrant_name", "TEXT DEFAULT ''"),
         ("done", "INTEGER DEFAULT 0"),
         ("synced_to_calendar", "INTEGER DEFAULT 0"),
+        ("google_event_id", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
         except sqlite3.OperationalError:
             pass
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(google_event_id)")
     # Migrate oauth_states: add code_verifier column if missing
     try:
         c.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
@@ -202,6 +204,8 @@ TEXTS = {
         "feedback_prompt": "✉️ Напишите ваше сообщение — текст или голосовое. Мы читаем каждое обращение.",
         "feedback_sent": "✅ Сообщение отправлено! Спасибо за обратную связь.",
         "feedback_from": "📨 *Новое сообщение*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Язык: {lang}\n📱 Get My Task Bot",
+        "cal_sync_new": "📅 Новая задача из Google Calendar:\n{emoji} *{title}*\n📅 {date}",
+        "cal_sync_removed": "🗑 Задача удалена из Google Calendar:\n*{title}*",
         "calendar_not_connected": "❌ Календарь не подключён. Используйте /connect чтобы подключить.",
         "reminder": "🔔 Напоминание: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ В это время уже есть: *{event}*.\n\nНапишите или надиктуйте другое время для задачи *{title}*:",
@@ -301,6 +305,8 @@ TEXTS = {
         "feedback_prompt": "✉️ Send us a message — text or voice. We read every submission.",
         "feedback_sent": "✅ Message sent! Thank you for your feedback.",
         "feedback_from": "📨 *New message*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Lang: {lang}\n📱 Get My Task Bot",
+        "cal_sync_new": "📅 New task from Google Calendar:\n{emoji} *{title}*\n📅 {date}",
+        "cal_sync_removed": "🗑 Task removed from Google Calendar:\n*{title}*",
         "calendar_not_connected": "❌ Calendar not connected. Use /connect to connect.",
         "reminder": "🔔 Reminder: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ There's already an event at this time: *{event}*.\n\nWrite or say a new time for *{title}*:",
@@ -400,6 +406,8 @@ TEXTS = {
         "feedback_prompt": "✉️ Напишіть ваше повідомлення — текст або голосове. Ми читаємо кожне звернення.",
         "feedback_sent": "✅ Повідомлення надіслано! Дякуємо за зворотній зв'язок.",
         "feedback_from": "📨 *Нове повідомлення*\n👤 {name}\n📱 @{username}\n🆔 `{chat_id}`\n🌐 Мова: {lang}\n📱 Get My Task Bot",
+        "cal_sync_new": "📅 Нова задача з Google Calendar:\n{emoji} *{title}*\n📅 {date}",
+        "cal_sync_removed": "🗑 Задачу видалено з Google Calendar:\n*{title}*",
         "calendar_not_connected": "❌ Календар не підключено. Використайте /connect щоб підключити.",
         "reminder": "🔔 Нагадування: *{title}*\n📅 {time}",
         "conflict_found": "⚠️ На цей час вже є подія: *{event}*.\n\nНапишіть або надиктуйте інший час для задачі *{title}*:",
@@ -577,14 +585,14 @@ def add_to_calendar(chat_id, task):
         }
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
-    save_task_to_db(chat_id, task, synced_to_calendar=1)
+    save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
     return result.get("htmlLink")
 
-def save_task_to_db(chat_id, task, synced_to_calendar=0):
+def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
     conn.execute(
-        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar) VALUES (?,?,?,?,?,?,?,0,?)",
-        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar)
+        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,?,?)",
+        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id)
     )
     conn.commit()
     conn.close()
@@ -730,6 +738,108 @@ async def check_reminders():
                             mark_reminder_sent(chat_id, event_id, remind_key)
         except Exception as e:
             logger.error(f"Reminder error for {chat_id}: {e}")
+
+async def sync_calendar_events():
+    """Sync Google Calendar events (next 3 days) to bot tasks DB every 15 min."""
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT chat_id, lang FROM users WHERE calendar_connected = 1 AND lang IS NOT NULL")
+    users = c.fetchall()
+    conn.close()
+
+    now = datetime.utcnow()
+    time_min = now.isoformat() + "Z"
+    time_max = (now + timedelta(days=3)).isoformat() + "Z"
+
+    for chat_id, lang in users:
+        try:
+            service = get_calendar_service_for_user(chat_id)
+            if not service:
+                continue
+            lang = lang or "ru"
+            user_obj = get_user(chat_id)
+            tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
+
+            # ── Fetch events from Google Calendar ──────────────────────────
+            result = service.events().list(
+                calendarId="primary",
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                orderBy="startTime"
+            ).execute()
+            cal_events = result.get("items", [])
+            cal_event_ids = {e["id"] for e in cal_events}
+
+            # ── Add new events not yet in bot DB ───────────────────────────
+            db = sqlite3.connect("users.db")
+            existing = {
+                row[0] for row in
+                db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL", (chat_id,)).fetchall()
+            }
+
+            for event in cal_events:
+                event_id = event["id"]
+                if event_id in existing:
+                    continue
+                title = event.get("summary", "—")
+                start = event.get("start", {})
+                if "dateTime" in start:
+                    dt = datetime.fromisoformat(start["dateTime"])
+                    suggested_date = dt.strftime("%Y-%m-%d")
+                    suggested_time = dt.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
+                else:
+                    suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
+                    suggested_time = None
+
+                task = {
+                    "title": title,
+                    "description": event.get("description", ""),
+                    "quadrant": "",
+                    "quadrant_name": "",
+                    "suggested_date": suggested_date,
+                    "suggested_time": suggested_time,
+                }
+                db.execute(
+                    "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,1,?)",
+                    (chat_id, title, task["description"], "", "", suggested_date, suggested_time, event_id)
+                )
+                db.commit()
+
+                date_display = format_date(suggested_date, lang)
+                time_sep = _TIME_SEP.get(lang, " ")
+                date_str = date_display + (f"{time_sep}{suggested_time}" if suggested_time else "")
+                await bot_app.bot.send_message(
+                    chat_id=chat_id,
+                    text=TEXTS[lang]["cal_sync_new"].format(emoji="📌", title=title, date=date_str),
+                    parse_mode="Markdown"
+                )
+
+            # ── Remove tasks whose Calendar event was deleted ──────────────
+            tracked = db.execute(
+                "SELECT id, title, google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
+                (chat_id,)
+            ).fetchall()
+
+            for task_id, title, event_id in tracked:
+                if event_id not in cal_event_ids:
+                    # Check if it's truly gone (event might be outside 3-day window but still future)
+                    try:
+                        service.events().get(calendarId="primary", eventId=event_id).execute()
+                        # Still exists (just outside 3-day window) — skip
+                    except Exception:
+                        # 404 or gone — delete from bot DB
+                        db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+                        db.commit()
+                        await bot_app.bot.send_message(
+                            chat_id=chat_id,
+                            text=TEXTS[lang]["cal_sync_removed"].format(title=title),
+                            parse_mode="Markdown"
+                        )
+
+            db.close()
+        except Exception as e:
+            logger.error(f"Calendar sync error for {chat_id}: {e}")
 
 async def check_task_reminders():
     conn = sqlite3.connect("users.db")
@@ -2386,6 +2496,7 @@ async def main():
     scheduler.add_job(check_reminders, "interval", minutes=5)
     scheduler.add_job(check_task_reminders, "interval", minutes=1)
     scheduler.add_job(send_morning_digests, "interval", minutes=1)
+    scheduler.add_job(sync_calendar_events, "interval", minutes=15)
     scheduler.start()
     await start_web_server()
     await bot_app.initialize()
