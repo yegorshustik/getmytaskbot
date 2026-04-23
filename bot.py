@@ -1150,23 +1150,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await timezone_command(update, context)
         return
     if user_text == t["btn_settings"]:
-        reminder_time = user["reminder_time"] if user else "08:00"
-        reminder_enabled = user["reminder_enabled"] if user else 1
-        reminder_label = t["btn_reminder"] + f" ({reminder_time})" if reminder_enabled else t["btn_reminder"] + f" ({t['reminder_disabled_text']})"
-        reminder_before = user["reminder_minutes"] if user else 30
-        before_label = t["btn_reminder_before"].format(min=reminder_before)
-        keyboard_rows = [
-            [InlineKeyboardButton(reminder_label, callback_data="settings_reminder")],
-            [InlineKeyboardButton(before_label, callback_data="settings_reminder_before")],
-            [InlineKeyboardButton(t["btn_archive"], callback_data="settings_archive")],
-        ]
-        if user and user["calendar_connected"]:
-            keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
-        else:
-            keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
-        keyboard_rows.append([InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
-                               InlineKeyboardButton(t["btn_timezone"], callback_data="settings_timezone")])
-        await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
+        await settings_command(update, context)
         return
     if user_text == t["btn_help"]:
         await help_command(update, context)
