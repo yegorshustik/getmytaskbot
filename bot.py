@@ -271,9 +271,9 @@ TEXTS = {
         "recurring_schedule_daily": "каждый день",
         "recurring_schedule_weekly": "каждый {days}",
         "recurring_day_names": {"MO":"пн","TU":"вт","WE":"ср","TH":"чт","FR":"пт","SA":"сб","SU":"вс"},
-        "btn_recur_yes": "✅ Да, повторяющаяся",
-        "btn_recur_once": "1️⃣ Только один раз",
-        "recur_created": "🔄 Повторяющаяся задача *{title}* создана!\n📅 {schedule}",
+        "btn_recur_yes": "🔄 Повторяющаяся",
+        "btn_recur_once": "1️⃣ Один раз",
+        "recur_created": "✅ *{title}* сохранена\n🔄 {schedule}",
         "btn_recur_continue": "✅ Продолжить серию",
         "btn_recur_delete": "🗑 Удалить серию",
         "recur_continued": "✅ Серия продолжается",
@@ -388,9 +388,9 @@ TEXTS = {
         "recurring_schedule_daily": "every day",
         "recurring_schedule_weekly": "every {days}",
         "recurring_day_names": {"MO":"Mon","TU":"Tue","WE":"Wed","TH":"Thu","FR":"Fri","SA":"Sat","SU":"Sun"},
-        "btn_recur_yes": "✅ Yes, recurring",
-        "btn_recur_once": "1️⃣ One time only",
-        "recur_created": "🔄 Recurring task *{title}* created!\n📅 {schedule}",
+        "btn_recur_yes": "🔄 Recurring",
+        "btn_recur_once": "1️⃣ One time",
+        "recur_created": "✅ *{title}* saved\n🔄 {schedule}",
         "btn_recur_continue": "✅ Continue series",
         "btn_recur_delete": "🗑 Delete series",
         "recur_continued": "✅ Series continues",
@@ -505,9 +505,9 @@ TEXTS = {
         "recurring_schedule_daily": "щодня",
         "recurring_schedule_weekly": "кожен {days}",
         "recurring_day_names": {"MO":"пн","TU":"вт","WE":"ср","TH":"чт","FR":"пт","SA":"сб","SU":"нд"},
-        "btn_recur_yes": "✅ Так, повторювана",
-        "btn_recur_once": "1️⃣ Тільки один раз",
-        "recur_created": "🔄 Повторювана задача *{title}* створена!\n📅 {schedule}",
+        "btn_recur_yes": "🔄 Повторювана",
+        "btn_recur_once": "1️⃣ Один раз",
+        "recur_created": "✅ *{title}* збережена\n🔄 {schedule}",
         "btn_recur_continue": "✅ Продовжити серію",
         "btn_recur_delete": "🗑 Видалити серію",
         "recur_continued": "✅ Серія продовжується",
@@ -1331,12 +1331,11 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
         time_sep = _TIME_SEP.get(lang, " ")
-        text = (
+        base_text = (
             f"{emoji} *{task['title']}*\n"
             f"{task['quadrant']} — {task['quadrant_name']}\n"
             f"📅 {date_display}"
             + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-            f"_{task['reason']}_"
         )
         save_skip_row = [
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
@@ -1344,13 +1343,14 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
         ]
         if task.get("recurring") and task.get("recurrence"):
             schedule = describe_recurrence(task["recurrence"], lang)
-            text += f"\n_{TEXTS[lang]['recurring_label']} — {schedule}_"
+            text = base_text + f"🔄 _{schedule}_"
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(TEXTS[lang]["btn_recur_yes"], callback_data=f"recur_yes_{i}")],
                 [InlineKeyboardButton(TEXTS[lang]["btn_recur_once"], callback_data=f"recur_once_{i}"),
                  InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
             ])
         else:
+            text = base_text + f"_{task['reason']}_"
             apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
             if user and user["calendar_connected"]:
                 keyboard = InlineKeyboardMarkup([
