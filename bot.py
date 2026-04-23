@@ -24,6 +24,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "114978994"))
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +55,15 @@ def init_db():
         )
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            event_type TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at)")
+    c.execute("""
         CREATE TABLE IF NOT EXISTS oauth_states (
             state TEXT PRIMARY KEY,
             chat_id INTEGER,
@@ -78,6 +88,7 @@ def init_db():
         ("reminder_before", "INTEGER DEFAULT 30"),
         ("reminder_minutes", "INTEGER DEFAULT 30"),
         ("pending_task_json", "TEXT DEFAULT NULL"),
+        ("last_active", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -93,6 +104,13 @@ def init_db():
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
         except sqlite3.OperationalError:
             pass
+    conn.commit()
+    conn.close()
+
+def log_event(chat_id, event_type):
+    conn = sqlite3.connect("users.db")
+    conn.execute("INSERT INTO events (chat_id, event_type) VALUES (?, ?)", (chat_id, event_type))
+    conn.execute("UPDATE users SET last_active=datetime('now') WHERE chat_id=?", (chat_id,))
     conn.commit()
     conn.close()
 
@@ -1175,6 +1193,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     proc_msg = await update.message.reply_text(t["processing"])
     context.user_data["_cleanup_ids"] = [update.message.message_id, proc_msg.message_id]
+    log_event(chat_id, "text_task")
     try:
         await process_and_show(update, context, user_text, chat_id, lang)
     except Exception as e:
@@ -1197,6 +1216,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     transcribing_msg = await update.message.reply_text(TEXTS[lang]["transcribing"])
     cleanup_ids = [update.message.message_id, transcribing_msg.message_id]
+    log_event(chat_id, "voice_task")
     try:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp_path = tmp.name
@@ -1232,6 +1252,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("lang_"):
         lang = data.split("_")[1]
         save_user(chat_id, lang=lang)
+        log_event(chat_id, "new_user")
         await query.edit_message_reply_markup(reply_markup=None)
         updated_user = get_user(chat_id)
         # If this is a new user (no timezone set yet), ask for timezone before showing menu
@@ -1529,6 +1550,55 @@ async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user["lang"] if user else "ru"
     await show_timezone_menu(update.message, chat_id, lang)
 
+def get_stats_data():
+    conn = sqlite3.connect("users.db")
+    now = datetime.utcnow()
+    day_ago   = (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    week_ago  = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    month_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    total_users   = conn.execute("SELECT COUNT(*) FROM users WHERE lang IS NOT NULL").fetchone()[0]
+    cal_users     = conn.execute("SELECT COUNT(*) FROM users WHERE calendar_connected=1").fetchone()[0]
+    dau = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (day_ago,)).fetchone()[0]
+    wau = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (week_ago,)).fetchone()[0]
+    mau = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (month_ago,)).fetchone()[0]
+    new_today = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='new_user' AND created_at >= ?", (day_ago,)).fetchone()[0]
+    new_week  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='new_user' AND created_at >= ?", (week_ago,)).fetchone()[0]
+    tasks_today = conn.execute("SELECT COUNT(*) FROM tasks WHERE created_at >= ?", (day_ago,)).fetchone()[0]
+    tasks_week  = conn.execute("SELECT COUNT(*) FROM tasks WHERE created_at >= ?", (week_ago,)).fetchone()[0]
+    voice_today = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (day_ago,)).fetchone()[0]
+    voice_week  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (week_ago,)).fetchone()[0]
+    conn.close()
+    return dict(total_users=total_users, cal_users=cal_users,
+                dau=dau, wau=wau, mau=mau,
+                new_today=new_today, new_week=new_week,
+                tasks_today=tasks_today, tasks_week=tasks_week,
+                voice_today=voice_today, voice_week=voice_week)
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id != BOT_OWNER_ID:
+        return
+    s = get_stats_data()
+    text = (
+        "📊 *Статистика Get My Task*\n\n"
+        f"👥 Всего пользователей: *{s['total_users']}*\n"
+        f"📅 С Google Calendar: *{s['cal_users']}*\n\n"
+        f"*Активность:*\n"
+        f"• DAU (сегодня): *{s['dau']}*\n"
+        f"• WAU (7 дней): *{s['wau']}*\n"
+        f"• MAU (30 дней): *{s['mau']}*\n\n"
+        f"*Новые пользователи:*\n"
+        f"• Сегодня: *{s['new_today']}*\n"
+        f"• За 7 дней: *{s['new_week']}*\n\n"
+        f"*Задачи созданы:*\n"
+        f"• Сегодня: *{s['tasks_today']}*\n"
+        f"• За 7 дней: *{s['tasks_week']}*\n\n"
+        f"*Голосовые:*\n"
+        f"• Сегодня: *{s['voice_today']}*\n"
+        f"• За 7 дней: *{s['voice_week']}*"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
@@ -1616,6 +1686,7 @@ async def oauth_callback(request):
     flow.fetch_token(code=code)
     creds = flow.credentials
     save_user(chat_id, calendar_token=creds.to_json(), calendar_connected=1)
+    log_event(chat_id, "calendar_connected")
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
     await bot_app.bot.send_message(
@@ -1715,6 +1786,56 @@ async def home_page(request):
 async def google_verification(request):
     return web.Response(text="google-site-verification: googled2363927b56587ef.html", content_type="text/html", charset="utf-8")
 
+async def stats_page(request):
+    s = get_stats_data()
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Stats — Get My Task</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f0f0f;color:#e0e0e0;padding:40px 20px}}
+    .wrap{{max-width:700px;margin:0 auto}}
+    h1{{font-size:1.8rem;font-weight:700;color:#fff;margin-bottom:4px}}
+    .sub{{color:#666;font-size:.85rem;margin-bottom:32px}}
+    .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px}}
+    .card{{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:20px}}
+    .card .val{{font-size:2rem;font-weight:700;color:#fff;line-height:1}}
+    .card .lbl{{font-size:.8rem;color:#666;margin-top:6px}}
+    h2{{font-size:1rem;font-weight:600;color:#aaa;margin:24px 0 12px;text-transform:uppercase;letter-spacing:.05em}}
+  </style>
+</head>
+<body><div class="wrap">
+  <h1>📊 Get My Task</h1>
+  <p class="sub">Stats · updated now</p>
+
+  <h2>Users</h2>
+  <div class="grid">
+    <div class="card"><div class="val">{s['total_users']}</div><div class="lbl">Total users</div></div>
+    <div class="card"><div class="val">{s['cal_users']}</div><div class="lbl">Google Calendar connected</div></div>
+    <div class="card"><div class="val">{s['new_today']}</div><div class="lbl">New today</div></div>
+    <div class="card"><div class="val">{s['new_week']}</div><div class="lbl">New this week</div></div>
+  </div>
+
+  <h2>Activity</h2>
+  <div class="grid">
+    <div class="card"><div class="val">{s['dau']}</div><div class="lbl">DAU (24h)</div></div>
+    <div class="card"><div class="val">{s['wau']}</div><div class="lbl">WAU (7 days)</div></div>
+    <div class="card"><div class="val">{s['mau']}</div><div class="lbl">MAU (30 days)</div></div>
+  </div>
+
+  <h2>Tasks</h2>
+  <div class="grid">
+    <div class="card"><div class="val">{s['tasks_today']}</div><div class="lbl">Created today</div></div>
+    <div class="card"><div class="val">{s['tasks_week']}</div><div class="lbl">Created this week</div></div>
+    <div class="card"><div class="val">{s['voice_today']}</div><div class="lbl">Voice today</div></div>
+    <div class="card"><div class="val">{s['voice_week']}</div><div class="lbl">Voice this week</div></div>
+  </div>
+</div></body></html>"""
+    return web.Response(text=html, content_type="text/html", charset="utf-8")
+
 PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1808,6 +1929,7 @@ async def privacy_policy(request):
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", home_page)
+    app.router.add_get("/stats", stats_page)
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
     app.router.add_get("/privacy", privacy_policy)
@@ -1830,6 +1952,7 @@ async def main():
     bot_app.add_handler(CommandHandler("tasks", tasks_command))
     bot_app.add_handler(CommandHandler("mytasks", mytasks_command))
     bot_app.add_handler(CommandHandler("settings", settings_command))
+    bot_app.add_handler(CommandHandler("stats", stats_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
