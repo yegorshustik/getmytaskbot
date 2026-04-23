@@ -626,7 +626,16 @@ async def check_reminders():
                             time_sep = _TIME_SEP.get(eff_lang, " ")
                             time_str = f"{date_part}{time_sep}{time_part}"
                             text = TEXTS[eff_lang]["reminder"].format(title=title, time=time_str)
-                            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+                            event_link = event.get("htmlLink")
+                            open_labels = {
+                                "ru": "📅 Открыть в Google Calendar",
+                                "en": "📅 Open in Google Calendar",
+                                "uk": "📅 Відкрити в Google Calendar",
+                            }
+                            markup = InlineKeyboardMarkup([[
+                                InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)
+                            ]]) if event_link else None
+                            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
                             mark_reminder_sent(chat_id, event_id, remind_key)
         except Exception as e:
             logger.error(f"Reminder error for {chat_id}: {e}")
