@@ -1939,9 +1939,13 @@ async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
     # ── Goal detection ────────────────────────────────────────────────────────
-    is_goal = await classify_goal_or_task(text, lang)
-    if is_goal:
-        context.user_data["goal_draft"] = {"title": text[:200]}
+    goal_info = await classify_goal_or_task(text, lang, tz_name)
+    if goal_info.get("is_goal"):
+        context.user_data["goal_draft"] = {
+            "title": text[:200],
+            "deadline": goal_info.get("deadline"),
+            "criteria": goal_info.get("criteria"),
+        }
         t = TEXTS[lang]
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t["btn_goal_yes"], callback_data="goal_confirm_yes"),
@@ -2310,9 +2314,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "goal_confirm_yes":
         t = TEXTS[lang]
-        context.user_data["goal_creation_step"] = "deadline"
+        draft = context.user_data.get("goal_draft", {})
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(t["goal_ask_deadline"], parse_mode="Markdown")
+        # Skip questions for info already present in the original message
+        if draft.get("deadline") and draft.get("criteria"):
+            # Have everything — create goal immediately
+            context.user_data.pop("goal_draft", None)
+            save_goal_to_db(chat_id, draft["title"], draft["criteria"], draft["deadline"])
+            await query.message.reply_text(
+                t["goal_created"].format(
+                    title=draft["title"],
+                    deadline=format_date(draft["deadline"], lang),
+                    criteria=draft["criteria"],
+                ), parse_mode="Markdown"
+            )
+        elif draft.get("deadline"):
+            # Have deadline, only need criteria
+            context.user_data["goal_creation_step"] = "criteria"
+            await query.message.reply_text(t["goal_ask_criteria"], parse_mode="Markdown")
+        else:
+            # Need deadline (and maybe criteria after)
+            context.user_data["goal_creation_step"] = "deadline"
+            await query.message.reply_text(t["goal_ask_deadline"], parse_mode="Markdown")
         return
     if data == "goal_confirm_no":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2981,43 +3004,53 @@ def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
 
-async def classify_goal_or_task(text: str, lang: str) -> bool:
-    """Quick Groq call: returns True if input sounds like a goal, not a task."""
+async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
+    """
+    Classify input as goal or task, and extract deadline/criteria if already present.
+    Returns dict: {is_goal, deadline (YYYY-MM-DD or null), criteria (str or null)}
+    """
+    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
     prompts = {
         "ru": (
-            "Определи: это ЦЕЛЬ (намерение достичь чего-то масштабного, желание, мечта) "
-            "или ЗАДАЧА (конкретное действие, которое можно выполнить за один раз)?\n"
-            "Цель: «хочу похудеть», «планирую запустить бизнес», «хочу выучить язык», «стать сильнее»\n"
-            "Задача: «позвонить врачу», «купить молоко», «встреча в 15:00», «отправить отчёт»\n"
+            f"Сегодня {today}. Проанализируй текст и ответь на вопросы:\n"
+            "1. Это ЦЕЛЬ (намерение, желание достичь чего-то масштабного) или ЗАДАЧА (конкретное действие)?\n"
+            "   Цель: «хочу похудеть», «планирую запустить бизнес», «хочу выучить язык»\n"
+            "   Задача: «позвонить врачу», «купить молоко», «встреча в 15:00»\n"
+            "2. Если это цель — есть ли в тексте дедлайн? Если да — верни дату в формате YYYY-MM-DD.\n"
+            "3. Если это цель — есть ли в тексте конкретный критерий успеха (измеримый результат)?\n"
             f"Текст: «{text}»\n"
-            'Ответь ТОЛЬКО JSON: {"is_goal": true} или {"is_goal": false}'
+            'Ответь ТОЛЬКО JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" или null, "criteria": "текст" или null}'
         ),
         "en": (
-            "Classify: is this a GOAL (aspiration, desire to achieve something big) "
-            "or a TASK (specific action done in one go)?\n"
-            "Goal: 'I want to lose weight', 'planning to start a business', 'want to learn a language'\n"
-            "Task: 'call the doctor', 'buy milk', 'meeting at 3pm', 'send the report'\n"
+            f"Today is {today}. Analyze the text and answer:\n"
+            "1. Is this a GOAL (aspiration, desire to achieve something big) or a TASK (specific one-time action)?\n"
+            "   Goal: 'I want to lose weight', 'planning to start a business', 'want to learn a language'\n"
+            "   Task: 'call the doctor', 'buy milk', 'meeting at 3pm'\n"
+            "2. If it's a goal — is there a deadline mentioned? If yes, return date as YYYY-MM-DD.\n"
+            "3. If it's a goal — is there a specific measurable success criterion?\n"
             f"Text: '{text}'\n"
-            'Answer ONLY JSON: {"is_goal": true} or {"is_goal": false}'
+            'Answer ONLY JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" or null, "criteria": "text" or null}'
         ),
         "uk": (
-            "Визнач: це ЦІЛЬ (намір досягти чогось масштабного, бажання, мрія) "
-            "чи ЗАДАЧА (конкретна дія, яку можна виконати за один раз)?\n"
-            "Ціль: «хочу схуднути», «планую запустити бізнес», «хочу вивчити мову»\n"
-            "Задача: «зателефонувати лікарю», «купити молоко», «зустріч о 15:00»\n"
+            f"Сьогодні {today}. Проаналізуй текст і дай відповідь:\n"
+            "1. Це ЦІЛЬ (намір, бажання досягти чогось масштабного) чи ЗАДАЧА (конкретна одноразова дія)?\n"
+            "   Ціль: «хочу схуднути», «планую запустити бізнес», «хочу вивчити мову»\n"
+            "   Задача: «зателефонувати лікарю», «купити молоко», «зустріч о 15:00»\n"
+            "2. Якщо це ціль — чи є в тексті дедлайн? Якщо так — поверни дату у форматі YYYY-MM-DD.\n"
+            "3. Якщо це ціль — чи є конкретний вимірюваний критерій успіху?\n"
             f"Текст: «{text}»\n"
-            'Відповідай ТІЛЬКИ JSON: {"is_goal": true} або {"is_goal": false}'
+            'Відповідай ТІЛЬКИ JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" або null, "criteria": "текст" або null}'
         ),
     }
     try:
         resp = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
-            max_tokens=20, temperature=0,
+            max_tokens=80, temperature=0,
         )
-        return json.loads(resp.choices[0].message.content.strip()).get("is_goal", False)
+        return json.loads(resp.choices[0].message.content.strip())
     except Exception:
-        return False
+        return {"is_goal": False, "deadline": None, "criteria": None}
 
 async def parse_goal_deadline(text: str, lang: str, tz_name: str) -> str:
     """Parse a natural language deadline into YYYY-MM-DD using Groq."""
