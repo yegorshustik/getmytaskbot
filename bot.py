@@ -534,6 +534,14 @@ TEXTS = {
         "btn_goal_link_yes": "✅ Привязать",
         "btn_goal_link_no": "➡️ Нет",
         "goal_linked": "📎 Привязано к цели *\"{goal}\"*",
+        "btn_goal_delete": "🗑 Удалить цель",
+        "goal_delete_confirm": "Удалить цель *\"{title}\"*?\n\nЧто делать со связанными задачами?",
+        "btn_goal_del_tasks": "🗑 Удалить задачи",
+        "btn_goal_del_keep": "🔗 Оставить задачи",
+        "btn_goal_del_cancel": "❌ Отмена",
+        "goal_deleted_with_tasks": "🗑 Цель удалена вместе с задачами ({n} шт.).",
+        "goal_deleted_tasks_kept": "🗑 Цель удалена. {n} задач(и) откреплены и остались в списке.",
+        "goal_deleted_no_tasks": "🗑 Цель удалена.",
         "btn_goals": "🎯 Цели",
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
@@ -722,6 +730,14 @@ TEXTS = {
         "btn_goal_link_yes": "✅ Link it",
         "btn_goal_link_no": "➡️ No",
         "goal_linked": "📎 Linked to goal *\"{goal}\"*",
+        "btn_goal_delete": "🗑 Delete goal",
+        "goal_delete_confirm": "Delete goal *\"{title}\"*?\n\nWhat should happen to linked tasks?",
+        "btn_goal_del_tasks": "🗑 Delete tasks",
+        "btn_goal_del_keep": "🔗 Keep tasks",
+        "btn_goal_del_cancel": "❌ Cancel",
+        "goal_deleted_with_tasks": "🗑 Goal deleted along with {n} task(s).",
+        "goal_deleted_tasks_kept": "🗑 Goal deleted. {n} task(s) unlinked and kept in your list.",
+        "goal_deleted_no_tasks": "🗑 Goal deleted.",
         "btn_goals": "🎯 Goals",
         "btn_reminder_before": "⏰ Remind {min} min before",
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
@@ -911,6 +927,14 @@ TEXTS = {
         "btn_goal_link_yes": "✅ Прив'язати",
         "btn_goal_link_no": "➡️ Ні",
         "goal_linked": "📎 Прив'язано до цілі *\"{goal}\"*",
+        "btn_goal_delete": "🗑 Видалити ціль",
+        "goal_delete_confirm": "Видалити ціль *\"{title}\"*?\n\nЩо робити з пов'язаними задачами?",
+        "btn_goal_del_tasks": "🗑 Видалити задачі",
+        "btn_goal_del_keep": "🔗 Залишити задачі",
+        "btn_goal_del_cancel": "❌ Скасувати",
+        "goal_deleted_with_tasks": "🗑 Ціль видалена разом із задачами ({n} шт.).",
+        "goal_deleted_tasks_kept": "🗑 Ціль видалена. {n} задач(і) від'єднані і залишились у списку.",
+        "goal_deleted_no_tasks": "🗑 Ціль видалена.",
         "btn_goals": "🎯 Цілі",
         "btn_reminder_before": "⏰ Нагадати за {min} хв",
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
@@ -2368,8 +2392,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save_task_to_db(chat_id, task)  # fallback: task wasn't tracked
             goals = get_active_goals(chat_id)
             goal_title = next((g["title"] for g in goals if g["id"] == goal_id), "")
-            await query.edit_message_reply_markup(reply_markup=None)
-            await query.message.reply_text(
+            await query.edit_message_text(
                 TEXTS[lang]["goal_linked"].format(goal=goal_title), parse_mode="Markdown"
             )
         return
@@ -2377,21 +2400,68 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_idx = int(data.split("_")[3])
         tasks = context.user_data.get("tasks", [])
         if task_idx < len(tasks):
-            task = tasks[task_idx]
-            # Task was already saved — just dismiss the prompt
-            emoji = QUADRANT_EMOJI.get(task.get("quadrant", ""), "⚪")
-            date_display = format_date(task.get("suggested_date", ""), lang)
-            time_sep = _TIME_SEP.get(lang, " ")
-            card = (
-                f"{emoji} *{task['title']}*\n"
-                f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
-                f"📅 {date_display}"
-                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-                + TEXTS[lang]["task_saved"]
-            )
-            await query.edit_message_reply_markup(reply_markup=None)
-            await query.message.reply_text(card, parse_mode="Markdown")
+            # Task already saved, card already shown — just remove the link-offer message
+            try:
+                await query.message.delete()
+            except Exception:
+                await query.edit_message_reply_markup(reply_markup=None)
         return
+    # ── Goal delete flow ──────────────────────────────────────────────────────
+    if data.startswith("gdel_") and not any(data.startswith(p) for p in ("gdel_tasks_", "gdel_keep_", "gdel_cancel_")):
+        goal_id = int(data.split("_")[1])
+        t = TEXTS[lang]
+        # fetch goal title for confirmation message
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT title FROM goals WHERE id=?", (goal_id,)).fetchone()
+        conn.close()
+        if not row:
+            await query.answer("Цель не найдена", show_alert=True)
+            return
+        title = row[0]
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t["btn_goal_del_tasks"], callback_data=f"gdel_tasks_{goal_id}"),
+             InlineKeyboardButton(t["btn_goal_del_keep"],  callback_data=f"gdel_keep_{goal_id}")],
+            [InlineKeyboardButton(t["btn_goal_del_cancel"], callback_data=f"gdel_cancel_{goal_id}")],
+        ])
+        await query.edit_message_text(
+            t["goal_delete_confirm"].format(title=title),
+            parse_mode="Markdown", reply_markup=keyboard
+        )
+        return
+    if data.startswith("gdel_tasks_") or data.startswith("gdel_keep_"):
+        delete_tasks = data.startswith("gdel_tasks_")
+        goal_id = int(data.split("_")[2])
+        t = TEXTS[lang]
+        n = delete_goal_from_db(goal_id, delete_tasks=delete_tasks)
+        if n == 0:
+            result_text = t["goal_deleted_no_tasks"]
+        elif delete_tasks:
+            result_text = t["goal_deleted_with_tasks"].format(n=n)
+        else:
+            result_text = t["goal_deleted_tasks_kept"].format(n=n)
+        await query.edit_message_text(result_text, parse_mode="Markdown")
+        return
+    if data.startswith("gdel_cancel_"):
+        goal_id = int(data.split("_")[2])
+        t = TEXTS[lang]
+        conn = sqlite3.connect("users.db")
+        row = conn.execute(
+            "SELECT id, title, criteria, deadline, quadrant, quadrant_name, status FROM goals WHERE id=? AND status='active'",
+            (goal_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            await query.edit_message_reply_markup(reply_markup=None)
+            return
+        g = {"id": row[0], "title": row[1], "criteria": row[2], "deadline": row[3],
+             "quadrant": row[4], "quadrant_name": row[5], "status": row[6]}
+        text = _render_goal_card(g, lang)
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_goal_delete"], callback_data=f"gdel_{goal_id}")
+        ]])
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        return
+    # ── End goal delete flow ──────────────────────────────────────────────────
     if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
         if chat_id != BOT_OWNER_ID:
             await query.answer("Нет доступа", show_alert=True)
@@ -3034,6 +3104,22 @@ def get_active_goals(chat_id: int) -> list[dict]:
     return [{"id": r[0], "title": r[1], "criteria": r[2], "deadline": r[3],
              "quadrant": r[4], "quadrant_name": r[5], "status": r[6]} for r in rows]
 
+def delete_goal_from_db(goal_id: int, delete_tasks: bool) -> int:
+    """Delete a goal (set status='deleted') and handle linked tasks.
+    If delete_tasks=True, deletes all linked tasks.
+    If delete_tasks=False, unlinks them (goal_id=NULL).
+    Returns count of affected tasks."""
+    conn = sqlite3.connect("users.db")
+    n = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=?", (goal_id,)).fetchone()[0]
+    if delete_tasks:
+        conn.execute("DELETE FROM tasks WHERE goal_id=?", (goal_id,))
+    else:
+        conn.execute("UPDATE tasks SET goal_id=NULL WHERE goal_id=?", (goal_id,))
+    conn.execute("UPDATE goals SET status='deleted' WHERE id=?", (goal_id,))
+    conn.commit()
+    conn.close()
+    return n
+
 def get_goal_progress(goal_id: int) -> tuple[int, int]:
     """Returns (done_count, total_count) for tasks linked to this goal."""
     conn = sqlite3.connect("users.db")
@@ -3112,6 +3198,17 @@ async def parse_goal_deadline(text: str, lang: str, tz_name: str) -> str:
     except Exception:
         return None
 
+def _render_goal_card(g: dict, lang: str) -> str:
+    """Render a goal as a Markdown card string."""
+    t = TEXTS[lang]
+    done, total = get_goal_progress(g["id"])
+    pct = round(done / total * 100) if total > 0 else 0
+    bar = _progress_bar(pct)
+    deadline_str = format_date(g["deadline"], lang) if g.get("deadline") else ""
+    deadline_label = (t["goal_deadline_label"].format(date=deadline_str) + "\n") if deadline_str else ""
+    progress_str = t["goal_progress"].format(bar=bar, pct=pct, done=done, total=total) if total > 0 else t["goal_no_tasks"]
+    return f"🎯 *{g['title']}*\n{deadline_label}{progress_str}"
+
 async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
@@ -3121,16 +3218,13 @@ async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not goals:
         await update.message.reply_text(t["goals_empty"], parse_mode="Markdown")
         return
-    lines = [t["goals_header"]]
+    await update.message.reply_text(t["goals_header"], parse_mode="Markdown")
     for g in goals:
-        done, total = get_goal_progress(g["id"])
-        pct = round(done / total * 100) if total > 0 else 0
-        bar = _progress_bar(pct)
-        deadline_str = format_date(g["deadline"], lang) if g.get("deadline") else ""
-        deadline_label = t["goal_deadline_label"].format(date=deadline_str) if deadline_str else ""
-        progress_str = t["goal_progress"].format(bar=bar, pct=pct, done=done, total=total) if total > 0 else t["goal_no_tasks"]
-        lines.append(f"*{g['title']}*\n{deadline_label}\n{progress_str}\n")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        text = _render_goal_card(g, lang)
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_goal_delete"], callback_data=f"gdel_{g['id']}")
+        ]])
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 async def _translate_announce(text_ru: str, lang: str) -> str:
