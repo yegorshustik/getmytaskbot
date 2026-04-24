@@ -1838,8 +1838,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
             date_display = format_date(date, lang) if date else "—"
             if time:
-                date_display += _TIME_SEP.get(lang, " ") + time
-            text += TEXTS[lang]["tasks_item"].format(emoji=emoji, title=title, date=date_display)
+                text += f"{time}  {emoji} *{title}* — {date_display}\n"
+            else:
+                text += f"{emoji} *{title}* — {date_display}\n"
         await query.message.reply_text(text, parse_mode="Markdown")
         return
     if data == "settings_reminder":
