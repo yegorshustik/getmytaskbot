@@ -36,6 +36,10 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ─── Announce (broadcast to users) ───────────────────────────────────────────
+# Pending announcements stored in memory until owner confirms send
+_pending_announcements: dict[str, dict] = {}
+
 # ─── Feedback Limits ──────────────────────────────────────────────────────────
 _FEEDBACK_COOLDOWN_SEC = 3600   # 1 hour between feedback messages
 _FEEDBACK_MAX_TEXT_LEN = 1000   # max characters for text feedback
@@ -1928,6 +1932,44 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
             )
         return
+    if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
+        if chat_id != BOT_OWNER_ID:
+            await query.answer("Нет доступа", show_alert=True)
+            return
+        announce_id = data.split("_", 2)[2]
+        ann = _pending_announcements.get(announce_id)
+        if data.startswith("announce_cancel_"):
+            _pending_announcements.pop(announce_id, None)
+            await query.edit_message_text("❌ Рассылка отменена.")
+            return
+        if not ann:
+            await query.answer("Анонс не найден или устарел", show_alert=True)
+            return
+        await query.edit_message_text("⏳ Рассылаю...")
+        conn = sqlite3.connect("users.db")
+        users_to_send = conn.execute(
+            "SELECT chat_id, lang FROM users WHERE last_active > datetime('now', '-30 days')"
+        ).fetchall()
+        conn.close()
+        sent = 0
+        failed = 0
+        for u_chat_id, u_lang in users_to_send:
+            text = ann.get(u_lang or "ru") or ann["ru"]
+            try:
+                await bot_app.bot.send_message(
+                    chat_id=u_chat_id, text=text, parse_mode="Markdown"
+                )
+                sent += 1
+                await asyncio.sleep(0.05)  # ~20 msg/sec, well within Telegram limits
+            except Exception as e:
+                failed += 1
+                logger.warning(f"[announce] failed to send to {u_chat_id}: {e}")
+        _pending_announcements.pop(announce_id, None)
+        await query.edit_message_text(
+            f"✅ *Рассылка завершена*\n📤 Отправлено: {sent}\n❌ Ошибок: {failed}",
+            parse_mode="Markdown"
+        )
+        return
     if data == "connect_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
         # If triggered from a task card, save the task so we can resume after OAuth
@@ -2463,6 +2505,76 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• За 7 дней: *{s['voice_week']}*"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
+
+async def _translate_announce(text_ru: str, lang: str) -> str:
+    """Translate Russian announcement text to target language via Groq."""
+    if lang == "ru":
+        return text_ru
+    lang_name = {"en": "English", "uk": "Ukrainian"}.get(lang, "English")
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Translate this Telegram bot update notification from Russian to {lang_name}. "
+                    "Keep it short, friendly and action-oriented. Preserve emojis and Markdown formatting (*bold*, _italic_). "
+                    "Return ONLY the translated text, nothing else:\n\n" + text_ru
+                )
+            }],
+            max_tokens=400,
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"[announce] translation to {lang} failed: {e}")
+        return text_ru  # fallback to Russian
+
+
+async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-only: /announce <text> — preview & broadcast update to all active users."""
+    chat_id = update.effective_chat.id
+    if chat_id != BOT_OWNER_ID:
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "📢 Использование:\n`/announce <текст обновления>`\n\n"
+            "Пример:\n`/announce 🆕 Теперь можно подписаться на Apple Calendar — все задачи автоматически появятся в твоём календаре. Попробуй в Настройках!`",
+            parse_mode="Markdown"
+        )
+        return
+
+    text_ru = " ".join(context.args)
+    msg = await update.message.reply_text("⏳ Перевожу на другие языки...")
+
+    text_en = await _translate_announce(text_ru, "en")
+    text_uk = await _translate_announce(text_ru, "uk")
+
+    # Count active users per language (last 30 days)
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        "SELECT lang, COUNT(*) FROM users WHERE last_active > datetime('now', '-30 days') GROUP BY lang"
+    ).fetchall()
+    conn.close()
+    by_lang = {r[0]: r[1] for r in rows}
+    total = sum(by_lang.values())
+
+    announce_id = secrets.token_hex(4)
+    _pending_announcements[announce_id] = {"ru": text_ru, "en": text_en, "uk": text_uk}
+
+    preview = (
+        f"📋 *Превью рассылки* `[{announce_id}]`\n\n"
+        f"🇷🇺 *RU* ({by_lang.get('ru', 0)} польз.):\n{text_ru}\n\n"
+        f"🇬🇧 *EN* ({by_lang.get('en', 0)} польз.):\n{text_en}\n\n"
+        f"🇺🇦 *UK* ({by_lang.get('uk', 0)} польз.):\n{text_uk}\n\n"
+        f"👥 *Итого получат:* {total} пользователей"
+    )
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📤 Отправить всем", callback_data=f"announce_send_{announce_id}"),
+        InlineKeyboardButton("❌ Отменить", callback_data=f"announce_cancel_{announce_id}"),
+    ]])
+    await msg.edit_text(preview, parse_mode="Markdown", reply_markup=keyboard)
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -3143,6 +3255,7 @@ async def main():
     bot_app.add_handler(CommandHandler("mytasks", mytasks_command))
     bot_app.add_handler(CommandHandler("settings", settings_command))
     bot_app.add_handler(CommandHandler("stats", stats_command))
+    bot_app.add_handler(CommandHandler("announce", announce_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
