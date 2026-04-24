@@ -1966,10 +1966,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not token:
             token = secrets.token_urlsafe(24)
             save_user(chat_id, ical_token=token)
-        base = BASE_URL.replace("https://", "").replace("http://", "")
-        webcal_url = f"webcal://{base}/ical/{token}"
+        open_url = f"{BASE_URL}/ical-open/{token}"
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(t["btn_apple_cal_open"], url=webcal_url)
+            InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)
         ]])
         await query.message.reply_text(
             t["apple_cal_info"], parse_mode="Markdown", reply_markup=keyboard
@@ -3071,11 +3070,19 @@ async def ical_feed(request):
         headers={"Content-Disposition": 'attachment; filename="getmytask.ics"'}
     )
 
+async def ical_open(request):
+    """Redirect to webcal:// — Telegram buttons only support https://, so we redirect."""
+    token = request.match_info.get("token", "")
+    base = BASE_URL.replace("https://", "").replace("http://", "")
+    webcal_url = f"webcal://{base}/ical/{token}"
+    raise web.HTTPFound(location=webcal_url)
+
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", home_page)
     app.router.add_get("/health", health_check)
     app.router.add_get("/ical/{token}", ical_feed)
+    app.router.add_get("/ical-open/{token}", ical_open)
     app.router.add_get("/stats", stats_page)
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
