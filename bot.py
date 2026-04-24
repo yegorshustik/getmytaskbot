@@ -2189,6 +2189,40 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recognized_msg = await update.message.reply_text(TEXTS[lang]["recognized"] + text)
         cleanup_ids.append(recognized_msg.message_id)
         context.user_data["_cleanup_ids"] = cleanup_ids
+        # Route through goal state machine if active
+        goal_step = context.user_data.get("goal_creation_step")
+        if goal_step == "deadline":
+            user_tz = user["timezone"] if user else "Europe/Moscow"
+            deadline = await parse_goal_deadline(text, lang, user_tz)
+            if not deadline:
+                await update.message.reply_text(
+                    "🤔 Не могу разобрать дату. Попробуй ещё раз — например: _«1 июля»_, _«через 3 месяца»_",
+                    parse_mode="Markdown"
+                )
+                return
+            context.user_data["goal_draft"]["deadline"] = deadline
+            context.user_data["goal_creation_step"] = "criteria"
+            await update.message.reply_text(TEXTS[lang]["goal_ask_criteria"], parse_mode="Markdown")
+            return
+        if goal_step == "criteria":
+            context.user_data.pop("goal_creation_step", None)
+            draft = context.user_data.pop("goal_draft", {})
+            save_goal_to_db(
+                chat_id=chat_id,
+                title=draft.get("title", ""),
+                criteria=text,
+                deadline=draft.get("deadline", ""),
+            )
+            deadline_display = format_date(draft.get("deadline", ""), lang)
+            await update.message.reply_text(
+                TEXTS[lang]["goal_created"].format(
+                    title=draft.get("title", ""),
+                    deadline=deadline_display,
+                    criteria=text,
+                ),
+                parse_mode="Markdown"
+            )
+            return
         if "pending_task" in context.user_data:
             await handle_reschedule(update, context, text, chat_id, lang)
             return
