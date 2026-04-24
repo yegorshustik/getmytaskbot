@@ -238,6 +238,7 @@ def init_db():
         ("synced_to_calendar", "INTEGER DEFAULT 0"),
         ("google_event_id", "TEXT DEFAULT NULL"),
         ("task_url", "TEXT DEFAULT NULL"),
+        ("goal_id", "INTEGER DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
@@ -259,6 +260,19 @@ def init_db():
         DELETE FROM tasks WHERE id NOT IN (
             SELECT MAX(id) FROM tasks
             GROUP BY chat_id, title, suggested_date, COALESCE(suggested_time, '')
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS goals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            title TEXT,
+            criteria TEXT,
+            deadline TEXT,
+            quadrant TEXT DEFAULT 'Q2',
+            quadrant_name TEXT DEFAULT '',
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT (datetime('now'))
         )
     """)
     c.execute("""
@@ -481,6 +495,46 @@ TEXTS = {
         "archive_empty": "Архив пуст — нет прошедших задач.",
         "btn_archive_next": "Далее →",
         "btn_reminder_before": "⏰ Напомнить за {min} мин",
+        "goal_detected": (
+            "🎯 Похоже, это не просто задача — это *цель!*\n\n"
+            "Хочешь оформить её как цель? Я помогу сделать её чёткой и достижимой — "
+            "задам пару вопросов и сформирую готовую цель."
+        ),
+        "btn_goal_yes": "🎯 Да, создать цель",
+        "btn_goal_no": "📝 Сохранить как задачу",
+        "goal_ask_deadline": (
+            "📅 Отлично, начинаем!\n\n"
+            "К какому сроку хочешь достичь этой цели?\n\n"
+            "_Например: «к 1 июля», «через 3 месяца», «до конца года»_"
+        ),
+        "goal_ask_criteria": (
+            "✨ Почти готово!\n\n"
+            "Как поймёшь, что цель достигнута? Опиши результат конкретно.\n\n"
+            "_Например: «100 пользователей», «минус 8 кг», «запущен сайт»_"
+        ),
+        "goal_created": (
+            "🎯 *Цель создана!*\n\n"
+            "*{title}*\n"
+            "📅 Дедлайн: {deadline}\n"
+            "✅ Критерий успеха: _{criteria}_\n\n"
+            "Теперь добавляй задачи как обычно — я буду предлагать привязывать их к этой цели. "
+            "Так сможешь видеть прогресс 💪"
+        ),
+        "goals_empty": (
+            "🎯 У тебя пока нет активных целей.\n\n"
+            "Просто опиши что-то масштабное голосом или текстом — "
+            "я распознаю цель и предложу оформить её."
+        ),
+        "goals_header": "🎯 *Твои цели:*\n\n",
+        "goal_progress": "{bar} {pct}% — {done}/{total} задач",
+        "goal_no_tasks": "_задачи ещё не добавлены_",
+        "goal_deadline_label": "📅 до {date}",
+        "goal_done_msg": "🏆 *Цель выполнена!*\n\nВсе задачи закрыты — ты это сделал! 🎉",
+        "goal_link_ask": "📎 Эта задача похожа на шаг к цели *\"{goal}\"*. Привязать её?",
+        "btn_goal_link_yes": "✅ Привязать",
+        "btn_goal_link_no": "➡️ Нет",
+        "goal_linked": "📎 Привязано к цели *\"{goal}\"*",
+        "btn_goals": "🎯 Цели",
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
         "task_reminder": "⏰ Напоминание: *{title}* начнётся в {time}",
@@ -629,6 +683,46 @@ TEXTS = {
         "archive_header": "🗂 *Completed tasks archive*",
         "archive_empty": "Archive is empty — no past tasks.",
         "btn_archive_next": "Next →",
+        "goal_detected": (
+            "🎯 This looks like more than a task — it's a *goal!*\n\n"
+            "Want to set it up as a goal? I'll ask a couple of quick questions "
+            "and help you turn it into something clear and achievable."
+        ),
+        "btn_goal_yes": "🎯 Yes, create a goal",
+        "btn_goal_no": "📝 Save as a task",
+        "goal_ask_deadline": (
+            "📅 Great, let's go!\n\n"
+            "By when do you want to achieve this goal?\n\n"
+            "_For example: 'by July 1st', 'in 3 months', 'by end of year'_"
+        ),
+        "goal_ask_criteria": (
+            "✨ Almost there!\n\n"
+            "How will you know the goal is achieved? Describe the result concretely.\n\n"
+            "_For example: '100 users', 'lost 8 kg', 'website launched'_"
+        ),
+        "goal_created": (
+            "🎯 *Goal created!*\n\n"
+            "*{title}*\n"
+            "📅 Deadline: {deadline}\n"
+            "✅ Success criteria: _{criteria}_\n\n"
+            "Keep adding tasks as usual — I'll suggest linking them to this goal "
+            "so you can track your progress 💪"
+        ),
+        "goals_empty": (
+            "🎯 You don't have any active goals yet.\n\n"
+            "Just describe something big by voice or text — "
+            "I'll recognize it as a goal and offer to set it up."
+        ),
+        "goals_header": "🎯 *Your goals:*\n\n",
+        "goal_progress": "{bar} {pct}% — {done}/{total} tasks",
+        "goal_no_tasks": "_no tasks added yet_",
+        "goal_deadline_label": "📅 due {date}",
+        "goal_done_msg": "🏆 *Goal achieved!*\n\nAll tasks are done — you did it! 🎉",
+        "goal_link_ask": "📎 This task looks like a step toward your goal *\"{goal}\"*. Link it?",
+        "btn_goal_link_yes": "✅ Link it",
+        "btn_goal_link_no": "➡️ No",
+        "goal_linked": "📎 Linked to goal *\"{goal}\"*",
+        "btn_goals": "🎯 Goals",
         "btn_reminder_before": "⏰ Remind {min} min before",
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
         "reminder_before_set": "✅ Will remind {min} min before task.",
@@ -778,6 +872,46 @@ TEXTS = {
         "archive_header": "🗂 *Архів виконаних задач*",
         "archive_empty": "Архів порожній — немає минулих задач.",
         "btn_archive_next": "Далі →",
+        "goal_detected": (
+            "🎯 Схоже, це не просто задача — це *ціль!*\n\n"
+            "Хочеш оформити її як ціль? Я допоможу зробити її чіткою і досяжною — "
+            "поставлю кілька запитань і сформую готову ціль."
+        ),
+        "btn_goal_yes": "🎯 Так, створити ціль",
+        "btn_goal_no": "📝 Зберегти як задачу",
+        "goal_ask_deadline": (
+            "📅 Чудово, починаємо!\n\n"
+            "До якого терміну хочеш досягти цієї цілі?\n\n"
+            "_Наприклад: «до 1 липня», «через 3 місяці», «до кінця року»_"
+        ),
+        "goal_ask_criteria": (
+            "✨ Майже готово!\n\n"
+            "Як зрозумієш, що ціль досягнута? Опиши результат конкретно.\n\n"
+            "_Наприклад: «100 користувачів», «мінус 8 кг», «запущений сайт»_"
+        ),
+        "goal_created": (
+            "🎯 *Ціль створено!*\n\n"
+            "*{title}*\n"
+            "📅 Дедлайн: {deadline}\n"
+            "✅ Критерій успіху: _{criteria}_\n\n"
+            "Додавай задачі як зазвичай — я буду пропонувати прив'язувати їх до цієї цілі. "
+            "Так побачиш прогрес 💪"
+        ),
+        "goals_empty": (
+            "🎯 У тебе поки немає активних цілей.\n\n"
+            "Просто опиши щось масштабне голосом або текстом — "
+            "я розпізнаю ціль і запропоную оформити її."
+        ),
+        "goals_header": "🎯 *Твої цілі:*\n\n",
+        "goal_progress": "{bar} {pct}% — {done}/{total} задач",
+        "goal_no_tasks": "_задачі ще не додані_",
+        "goal_deadline_label": "📅 до {date}",
+        "goal_done_msg": "🏆 *Ціль виконана!*\n\nВсі задачі закриті — ти це зробив! 🎉",
+        "goal_link_ask": "📎 Ця задача схожа на крок до цілі *\"{goal}\"*. Прив'язати її?",
+        "btn_goal_link_yes": "✅ Прив'язати",
+        "btn_goal_link_no": "➡️ Ні",
+        "goal_linked": "📎 Прив'язано до цілі *\"{goal}\"*",
+        "btn_goals": "🎯 Цілі",
         "btn_reminder_before": "⏰ Нагадати за {min} хв",
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
@@ -1001,10 +1135,10 @@ def add_recurring_to_calendar(chat_id, task):
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
     conn.execute(
-        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url) VALUES (?,?,?,?,?,?,?,0,?,?,?)",
+        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url, goal_id) VALUES (?,?,?,?,?,?,?,0,?,?,?,?)",
         (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""),
          task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id,
-         task.get("url") or task.get("task_url"))
+         task.get("url") or task.get("task_url"), task.get("goal_id"))
     )
     conn.commit()
     conn.close()
@@ -1778,9 +1912,43 @@ async def handle_reschedule(update, context, text, chat_id, lang):
     except Exception as e:
         await update.message.reply_text(TEXTS[lang]["error"] + str(e))
 
+async def process_and_show_from_callback(query, context, text, chat_id, lang):
+    """Same as process_and_show but triggered from a callback (no Update object)."""
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    tasks = await process_text(text, lang, tz_name)
+    if not tasks:
+        await query.message.reply_text(TEXTS[lang]["no_tasks"])
+        return
+    valid_tasks = []
+    for task in tasks:
+        adjusted, status = adjust_task_to_future(task, tz_name)
+        if status != "past":
+            valid_tasks.append(adjusted)
+    if not valid_tasks:
+        return
+    context.user_data["tasks"] = valid_tasks
+    # Reuse show_tasks with a minimal update-like object
+    class _FakeUpdate:
+        message = query.message
+        effective_chat = query.message.chat
+    await show_tasks(_FakeUpdate(), chat_id, valid_tasks, lang, context=context)
+
+
 async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
+    # ── Goal detection ────────────────────────────────────────────────────────
+    is_goal = await classify_goal_or_task(text, lang)
+    if is_goal:
+        context.user_data["goal_draft"] = {"title": text[:200]}
+        t = TEXTS[lang]
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_goal_yes"], callback_data="goal_confirm_yes"),
+            InlineKeyboardButton(t["btn_goal_no"],  callback_data="goal_confirm_no"),
+        ]])
+        await update.message.reply_text(t["goal_detected"], parse_mode="Markdown", reply_markup=keyboard)
+        return
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
         await update.message.reply_text(TEXTS[lang]["no_tasks"])
@@ -1923,6 +2091,42 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_text == t["btn_connect"]:
         await connect_command(update, context)
         return
+    # ── Goal creation state machine ───────────────────────────────────────────
+    goal_step = context.user_data.get("goal_creation_step")
+    if goal_step == "deadline":
+        user_tz = user["timezone"] if user else "Europe/Moscow"
+        deadline = await parse_goal_deadline(user_text, lang, user_tz)
+        if not deadline:
+            await update.message.reply_text(
+                "🤔 Не могу разобрать дату. Попробуй ещё раз — например: _«1 июля»_, _«через 3 месяца»_",
+                parse_mode="Markdown"
+            )
+            return
+        context.user_data["goal_draft"]["deadline"] = deadline
+        context.user_data["goal_creation_step"] = "criteria"
+        await update.message.reply_text(t["goal_ask_criteria"], parse_mode="Markdown")
+        return
+    if goal_step == "criteria":
+        draft = context.user_data.pop("goal_creation_step", None) and context.user_data.get("goal_draft", {})
+        context.user_data.pop("goal_creation_step", None)
+        draft = context.user_data.pop("goal_draft", {})
+        goal_id = save_goal_to_db(
+            chat_id=chat_id,
+            title=draft.get("title", ""),
+            criteria=user_text,
+            deadline=draft.get("deadline", ""),
+        )
+        deadline_display = format_date(draft.get("deadline", ""), lang)
+        await update.message.reply_text(
+            t["goal_created"].format(
+                title=draft.get("title", ""),
+                deadline=deadline_display,
+                criteria=user_text,
+            ),
+            parse_mode="Markdown"
+        )
+        return
+    # ── Reschedule ────────────────────────────────────────────────────────────
     if "pending_task" in context.user_data:
         if len(user_text) < 3:
             await update.message.reply_text(t["correction_unclear"])
@@ -2070,6 +2274,41 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 TEXTS[lang]["lang_set"],
                 reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
             )
+        return
+    if data == "goal_confirm_yes":
+        t = TEXTS[lang]
+        context.user_data["goal_creation_step"] = "deadline"
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(t["goal_ask_deadline"], parse_mode="Markdown")
+        return
+    if data == "goal_confirm_no":
+        await query.edit_message_reply_markup(reply_markup=None)
+        draft = context.user_data.pop("goal_draft", {})
+        raw = draft.get("title", "")
+        if raw:
+            await process_and_show_from_callback(query, context, raw, chat_id, lang)
+        return
+    if data.startswith("goal_link_yes_"):
+        goal_id = int(data.split("_")[3])
+        task_idx = int(data.split("_")[4])
+        tasks = context.user_data.get("tasks", [])
+        if task_idx < len(tasks):
+            task = tasks[task_idx]
+            task["goal_id"] = goal_id
+            save_task_to_db(chat_id, task)
+            goals = get_active_goals(chat_id)
+            goal_title = next((g["title"] for g in goals if g["id"] == goal_id), "")
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                TEXTS[lang]["goal_linked"].format(goal=goal_title), parse_mode="Markdown"
+            )
+        return
+    if data.startswith("goal_link_no_"):
+        task_idx = int(data.split("_")[3])
+        tasks = context.user_data.get("tasks", [])
+        if task_idx < len(tasks):
+            save_task_to_db(chat_id, tasks[task_idx])
+        await query.edit_message_reply_markup(reply_markup=None)
         return
     if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
         if chat_id != BOT_OWNER_ID:
@@ -2518,19 +2757,35 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     save_task_to_db(chat_id, task)
                     await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
                 return
-        save_task_to_db(chat_id, task)
-        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-        date_display = format_date(task["suggested_date"], lang)
-        time_sep = _TIME_SEP.get(lang, " ")
-        card = (
-            f"{emoji} *{task['title']}*\n"
-            f"{task['quadrant']} — {task['quadrant_name']}\n"
-            f"📅 {date_display}"
-            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-            f"_{task['reason']}_\n\n"
-            + TEXTS[lang]["task_saved"]
-        )
-        await query.edit_message_text(card, parse_mode="Markdown")
+        # Check if user has active goals — offer to link this task
+        active_goals = get_active_goals(chat_id)
+        if active_goals and not task.get("goal_id"):
+            goal = active_goals[0]  # offer link to most recent goal
+            t_cb = TEXTS[lang]
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t_cb["btn_goal_link_yes"], callback_data=f"goal_link_yes_{goal['id']}_{idx}"),
+                InlineKeyboardButton(t_cb["btn_goal_link_no"],  callback_data=f"goal_link_no_{idx}"),
+            ]])
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                t_cb["goal_link_ask"].format(goal=goal["title"]),
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+        else:
+            save_task_to_db(chat_id, task)
+            emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
+            date_display = format_date(task["suggested_date"], lang)
+            time_sep = _TIME_SEP.get(lang, " ")
+            card = (
+                f"{emoji} *{task['title']}*\n"
+                f"{task['quadrant']} — {task['quadrant_name']}\n"
+                f"📅 {date_display}"
+                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+                f"_{task['reason']}_\n\n"
+                + TEXTS[lang]["task_saved"]
+            )
+            await query.edit_message_text(card, parse_mode="Markdown")
         user_fresh = get_user(chat_id)
         if not user_fresh["first_task_done"]:
             save_user(chat_id, first_task_done=1)
@@ -2644,6 +2899,119 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• За 7 дней: *{s['voice_week']}*"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
+
+# ─── Goals ────────────────────────────────────────────────────────────────────
+
+def save_goal_to_db(chat_id: int, title: str, criteria: str, deadline: str,
+                    quadrant: str = "Q2", quadrant_name: str = "") -> int:
+    conn = sqlite3.connect("users.db")
+    cur = conn.execute(
+        "INSERT INTO goals (chat_id, title, criteria, deadline, quadrant, quadrant_name) VALUES (?,?,?,?,?,?)",
+        (chat_id, title, criteria, deadline, quadrant, quadrant_name)
+    )
+    goal_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return goal_id
+
+def get_active_goals(chat_id: int) -> list[dict]:
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        "SELECT id, title, criteria, deadline, quadrant, quadrant_name, status FROM goals WHERE chat_id=? AND status='active' ORDER BY created_at DESC",
+        (chat_id,)
+    ).fetchall()
+    conn.close()
+    return [{"id": r[0], "title": r[1], "criteria": r[2], "deadline": r[3],
+             "quadrant": r[4], "quadrant_name": r[5], "status": r[6]} for r in rows]
+
+def get_goal_progress(goal_id: int) -> tuple[int, int]:
+    """Returns (done_count, total_count) for tasks linked to this goal."""
+    conn = sqlite3.connect("users.db")
+    total = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=?", (goal_id,)).fetchone()[0]
+    done = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=? AND done=1", (goal_id,)).fetchone()[0]
+    conn.close()
+    return done, total
+
+def _progress_bar(pct: int, length: int = 8) -> str:
+    filled = round(pct / 100 * length)
+    return "█" * filled + "░" * (length - filled)
+
+async def classify_goal_or_task(text: str, lang: str) -> bool:
+    """Quick Groq call: returns True if input sounds like a goal, not a task."""
+    prompts = {
+        "ru": (
+            "Определи: это ЦЕЛЬ (намерение достичь чего-то масштабного, желание, мечта) "
+            "или ЗАДАЧА (конкретное действие, которое можно выполнить за один раз)?\n"
+            "Цель: «хочу похудеть», «планирую запустить бизнес», «хочу выучить язык», «стать сильнее»\n"
+            "Задача: «позвонить врачу», «купить молоко», «встреча в 15:00», «отправить отчёт»\n"
+            f"Текст: «{text}»\n"
+            'Ответь ТОЛЬКО JSON: {"is_goal": true} или {"is_goal": false}'
+        ),
+        "en": (
+            "Classify: is this a GOAL (aspiration, desire to achieve something big) "
+            "or a TASK (specific action done in one go)?\n"
+            "Goal: 'I want to lose weight', 'planning to start a business', 'want to learn a language'\n"
+            "Task: 'call the doctor', 'buy milk', 'meeting at 3pm', 'send the report'\n"
+            f"Text: '{text}'\n"
+            'Answer ONLY JSON: {"is_goal": true} or {"is_goal": false}'
+        ),
+        "uk": (
+            "Визнач: це ЦІЛЬ (намір досягти чогось масштабного, бажання, мрія) "
+            "чи ЗАДАЧА (конкретна дія, яку можна виконати за один раз)?\n"
+            "Ціль: «хочу схуднути», «планую запустити бізнес», «хочу вивчити мову»\n"
+            "Задача: «зателефонувати лікарю», «купити молоко», «зустріч о 15:00»\n"
+            f"Текст: «{text}»\n"
+            'Відповідай ТІЛЬКИ JSON: {"is_goal": true} або {"is_goal": false}'
+        ),
+    }
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
+            max_tokens=20, temperature=0,
+        )
+        return json.loads(resp.choices[0].message.content.strip()).get("is_goal", False)
+    except Exception:
+        return False
+
+async def parse_goal_deadline(text: str, lang: str, tz_name: str) -> str:
+    """Parse a natural language deadline into YYYY-MM-DD using Groq."""
+    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+    prompts = {
+        "ru": f"Сегодня {today}. Определи дату из текста: «{text}». Верни ТОЛЬКО JSON: {{\"date\": \"YYYY-MM-DD\"}} или {{\"date\": null}} если не ясно.",
+        "en": f"Today is {today}. Parse the deadline from: '{text}'. Return ONLY JSON: {{\"date\": \"YYYY-MM-DD\"}} or {{\"date\": null}} if unclear.",
+        "uk": f"Сьогодні {today}. Визнач дату з тексту: «{text}». Поверни ТІЛЬКИ JSON: {{\"date\": \"YYYY-MM-DD\"}} або {{\"date\": null}} якщо незрозуміло.",
+    }
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
+            max_tokens=30, temperature=0,
+        )
+        return json.loads(resp.choices[0].message.content.strip()).get("date")
+    except Exception:
+        return None
+
+async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    t = TEXTS[lang]
+    goals = get_active_goals(chat_id)
+    if not goals:
+        await update.message.reply_text(t["goals_empty"], parse_mode="Markdown")
+        return
+    lines = [t["goals_header"]]
+    for g in goals:
+        done, total = get_goal_progress(g["id"])
+        pct = round(done / total * 100) if total > 0 else 0
+        bar = _progress_bar(pct)
+        deadline_str = format_date(g["deadline"], lang) if g.get("deadline") else ""
+        deadline_label = t["goal_deadline_label"].format(date=deadline_str) if deadline_str else ""
+        progress_str = t["goal_progress"].format(bar=bar, pct=pct, done=done, total=total) if total > 0 else t["goal_no_tasks"]
+        lines.append(f"*{g['title']}*\n{deadline_label}\n{progress_str}\n")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 
 async def _translate_announce(text_ru: str, lang: str) -> str:
     """Translate Russian announcement text to target language via Groq."""
@@ -3395,6 +3763,7 @@ async def main():
     bot_app.add_handler(CommandHandler("settings", settings_command))
     bot_app.add_handler(CommandHandler("stats", stats_command))
     bot_app.add_handler(CommandHandler("announce", announce_command))
+    bot_app.add_handler(CommandHandler("goals", goals_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
@@ -3441,6 +3810,7 @@ async def main():
         BotCommand("settings", "⚙️ Настройки"),
         BotCommand("timezone", "🕐 Таймзона"),
         BotCommand("connect", "📅 Подключить Calendar"),
+        BotCommand("goals", "🎯 Мои цели"),
         BotCommand("help", "❓ Помощь"),
     ])
     await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
