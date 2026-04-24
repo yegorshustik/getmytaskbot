@@ -1022,7 +1022,7 @@ async def check_reminders():
             logger.error(f"Reminder error for {chat_id}: {e}")
 
 async def sync_calendar_events():
-    """Sync Google Calendar events (next 3 days) to bot tasks DB every 15 min."""
+    """Sync Google Calendar events (next 24 h) to bot tasks DB every 15 min."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("SELECT chat_id, lang FROM users WHERE calendar_connected = 1 AND lang IS NOT NULL")
@@ -1031,7 +1031,7 @@ async def sync_calendar_events():
 
     now = datetime.utcnow()
     time_min = now.isoformat() + "Z"
-    time_max = (now + timedelta(days=3)).isoformat() + "Z"
+    time_max = (now + timedelta(days=1)).isoformat() + "Z"
 
     for chat_id, lang in users:
         try:
@@ -1097,7 +1097,7 @@ async def sync_calendar_events():
 
                 for task_id, title, event_id in tracked:
                     if event_id not in cal_event_ids:
-                        # Check if it's truly gone (event might be outside 3-day window but still future)
+                        # Check if it's truly gone (event might be outside 24h window but still future)
                         try:
                             service.events().get(calendarId="primary", eventId=event_id).execute()
                             # Still exists (just outside 3-day window) — skip
