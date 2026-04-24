@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import uuid
 import json
 import base64
@@ -236,6 +237,7 @@ def init_db():
         ("done", "INTEGER DEFAULT 0"),
         ("synced_to_calendar", "INTEGER DEFAULT 0"),
         ("google_event_id", "TEXT DEFAULT NULL"),
+        ("task_url", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
@@ -795,6 +797,22 @@ TEXTS = {
     },
 }
 
+_URL_RE = re.compile(r'https?://[^\s\]\)>\"\']+')
+
+def extract_url(text: str) -> str | None:
+    """Return the first http/https URL found in text, or None."""
+    if not text:
+        return None
+    m = _URL_RE.search(text)
+    return m.group(0).rstrip('.,;') if m else None
+
+def fmt_title(title: str, url: str | None, bold: bool = True) -> str:
+    """Format task title: clickable link if URL present, bold otherwise."""
+    if url:
+        return f"[{title}]({url})"
+    return f"*{title}*" if bold else title
+
+
 def get_menu_hint(lang: str) -> str:
     hints = TEXTS.get(lang, TEXTS["ru"]).get("menu_hint", [])
     return random.choice(hints) if hints else "Надиктуйте или опишите задачу:"
@@ -828,18 +846,21 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
 ВАЖНО про время: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Всегда возвращай время в будущем: если 07:00 уже прошло — верни 19:00; если и 19:00 прошло — верни 07:00 следующего дня.
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
+Если в тексте есть URL (ссылка на Zoom, Meet, сайт и т.д.) — добавь поле url с этой ссылкой. Иначе не включай поле url.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
 IMPORTANT about time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) Always return a future time: if 07:00 has passed return 19:00; if 19:00 has also passed return 07:00 tomorrow.
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
+If the text contains a URL (Zoom, Meet, website link, etc.) — add a url field with that link. Otherwise don't include the url field.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
 ВАЖЛИВО про час: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Завжди повертай час у майбутньому: якщо 07:00 минуло — повертай 19:00; якщо й 19:00 минуло — повертай 07:00 наступного дня.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
+Якщо в тексті є URL (посилання на Zoom, Meet, сайт тощо) — додай поле url з цим посиланням. Інакше не включай поле url.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
@@ -980,8 +1001,10 @@ def add_recurring_to_calendar(chat_id, task):
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
     conn.execute(
-        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,?,?)",
-        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""), task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id)
+        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url) VALUES (?,?,?,?,?,?,?,0,?,?,?)",
+        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""),
+         task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id,
+         task.get("url") or task.get("task_url"))
     )
     conn.commit()
     conn.close()
@@ -1211,19 +1234,29 @@ async def sync_calendar_events():
                         suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
                         suggested_time = None
 
+                    # Extract URL from event: hangoutLink > conferenceData > location > description
+                    event_url = (
+                        event.get("hangoutLink")
+                        or next((ep.get("uri") for ep in
+                                 event.get("conferenceData", {}).get("entryPoints", [])
+                                 if ep.get("uri", "").startswith("http")), None)
+                        or (event.get("location", "") if event.get("location", "").startswith("http") else None)
+                        or extract_url(event.get("description", ""))
+                    )
+
                     # If a task with same title+date+time already exists — just link it to Calendar, don't create duplicate
                     task_key = (title, suggested_date, suggested_time)
                     if task_key in existing_keys:
                         db.execute(
-                            "UPDATE tasks SET google_event_id=?, synced_to_calendar=1 WHERE chat_id=? AND title=? AND suggested_date=? AND suggested_time IS ? AND google_event_id IS NULL",
-                            (event_id, chat_id, title, suggested_date, suggested_time)
+                            "UPDATE tasks SET google_event_id=?, synced_to_calendar=1, task_url=COALESCE(task_url, ?) WHERE chat_id=? AND title=? AND suggested_date=? AND suggested_time IS ? AND google_event_id IS NULL",
+                            (event_id, event_url, chat_id, title, suggested_date, suggested_time)
                         )
                         db.commit()
                         continue
 
                     db.execute(
-                        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,1,?)",
-                        (chat_id, title, event.get("description", ""), "", "", suggested_date, suggested_time, event_id)
+                        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url) VALUES (?,?,?,?,?,?,?,0,1,?,?)",
+                        (chat_id, title, event.get("description", ""), "", "", suggested_date, suggested_time, event_id, event_url)
                     )
                     db.commit()
 
@@ -1284,7 +1317,7 @@ async def check_task_reminders():
             hi_date, hi_time = hi.strftime("%Y-%m-%d"), hi.strftime("%H:%M")
 
             tasks = conn.execute(
-                """SELECT id, title, suggested_date, suggested_time FROM tasks
+                """SELECT id, title, suggested_date, suggested_time, task_url FROM tasks
                    WHERE chat_id=?
                    AND suggested_time IS NOT NULL
                    AND synced_to_calendar = 0
@@ -1293,14 +1326,15 @@ async def check_task_reminders():
                 (chat_id, lo_date, lo_date, lo_time, hi_date, hi_date, hi_time)
             ).fetchall()
 
-            for task_id, title, date, time in tasks:
+            for task_id, title, date, time, task_url in tasks:
                 remind_key = f"task_{task_id}"
                 sent_key = f"{date}T{time}"
                 if reminder_already_sent(chat_id, remind_key, sent_key):
                     continue
+                title_fmt = fmt_title(title, task_url)
                 await bot_app.bot.send_message(
                     chat_id=chat_id,
-                    text=TEXTS[lang]["task_reminder"].format(title=title, time=time),
+                    text=TEXTS[lang]["task_reminder"].format(title=title_fmt, time=time),
                     parse_mode="Markdown"
                 )
                 mark_reminder_sent(chat_id, remind_key, sent_key)
@@ -1332,19 +1366,19 @@ async def send_morning_digests():
             # Digest: only tasks WITHOUT time (timed tasks get their own reminder)
             db = sqlite3.connect("users.db")
             today_rows = db.execute(
-                "SELECT title FROM tasks WHERE chat_id=? AND suggested_date=? AND (suggested_time IS NULL OR suggested_time='') ORDER BY id ASC",
+                "SELECT title, task_url FROM tasks WHERE chat_id=? AND suggested_date=? AND (suggested_time IS NULL OR suggested_time='') ORDER BY id ASC",
                 (chat_id, today)
             ).fetchall()
             future_rows = db.execute(
-                "SELECT title, suggested_date FROM tasks WHERE chat_id=? AND suggested_date>? AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 5",
+                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 5",
                 (chat_id, today)
             ).fetchall() if not today_rows else []
             db.close()
             if today_rows:
-                task_lines = "".join(f"• *{title}*\n" for (title,) in today_rows)
+                task_lines = "".join(f"• {fmt_title(title, url)}\n" for title, url in today_rows)
                 text = t["morning_digest"].format(tasks=task_lines)
             elif future_rows:
-                task_lines = "".join(f"• *{title}* — {format_date(date, lang)}\n" for title, date in future_rows)
+                task_lines = "".join(f"• {fmt_title(title, url)} — {format_date(date, lang)}\n" for title, date, url in future_rows)
                 text = t["morning_digest_future"].format(tasks=task_lines)
             else:
                 text = t["morning_digest_empty"]
