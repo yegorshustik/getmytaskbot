@@ -1756,8 +1756,7 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         by_date[date].append((title, quadrant, time, is_done))
 
     sorted_dates = sorted(by_date.keys())
-    visible_dates = [d for d in sorted_dates if d == today_str]
-    hidden_count = 0
+    visible_dates = sorted_dates  # Show all upcoming dates (today, tomorrow, and beyond)
 
     blocks = []
     for date in visible_dates:
@@ -1803,8 +1802,6 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         blocks.append("\n".join(lines))
 
     text = "\n\n".join(blocks)
-    if hidden_count > 0:
-        text += "\n\n" + t["tasks_more_days"].format(n=hidden_count, days=_days_word(hidden_count, lang, t))
     return text
 
 def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
