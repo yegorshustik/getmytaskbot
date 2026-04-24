@@ -73,6 +73,92 @@ def check_rate_limit(chat_id: int) -> bool:
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
+# ─── Monitoring & Alerting ─────────────────────────────────────────────────────
+import shutil
+
+_alert_cooldowns: dict[str, float] = {}
+_ALERT_COOLDOWN_SEC = 1800          # 30 min between same alert type
+_job_error_counts: dict[str, int] = defaultdict(int)  # consecutive failures per job
+
+# Rolling window for user-facing errors (5-min window)
+_ux_error_count = 0
+_ux_error_window_start: float = 0.0
+
+bot_app = None   # set in main(), needed for alerts
+
+async def send_owner_alert(alert_key: str, text: str) -> None:
+    """Send a Telegram alert to the bot owner with per-key cooldown."""
+    now = _time.monotonic()
+    if now - _alert_cooldowns.get(alert_key, 0) < _ALERT_COOLDOWN_SEC:
+        return
+    _alert_cooldowns[alert_key] = now
+    try:
+        await bot_app.bot.send_message(
+            chat_id=BOT_OWNER_ID,
+            text=text,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"[alert] failed to send alert '{alert_key}': {e}")
+
+async def _safe_job(job_fn, job_name: str) -> None:
+    """Wrapper for APScheduler jobs: resets error counter on success, alerts on 3+ consecutive failures."""
+    try:
+        await job_fn()
+        _job_error_counts[job_name] = 0
+    except Exception as e:
+        _job_error_counts[job_name] += 1
+        count = _job_error_counts[job_name]
+        logger.error(f"[job:{job_name}] failure #{count}: {e}", exc_info=True)
+        if count >= 3:
+            await send_owner_alert(
+                f"job_fail_{job_name}",
+                f"🚨 *Ошибка в задаче `{job_name}`*\n"
+                f"_{count} раз подряд_\n\n`{str(e)[:300]}`"
+            )
+
+async def monitor_system() -> None:
+    """Every 10 min: check disk, memory and DB. Alert owner if anything is critical."""
+    alerts: list[str] = []
+
+    # 1. DB health
+    try:
+        with sqlite3.connect("users.db") as db:
+            db.execute("SELECT COUNT(*) FROM users").fetchone()
+    except Exception as e:
+        alerts.append(f"🔴 *БД недоступна*\n`{e}`")
+
+    # 2. Disk space
+    try:
+        total, used, free = shutil.disk_usage("/")
+        pct = used / total * 100
+        if pct > 90:
+            free_gb = free / (1024 ** 3)
+            alerts.append(f"💾 *Диск заполнен на {pct:.0f}%*\nОсталось {free_gb:.1f} ГБ")
+    except Exception:
+        pass
+
+    # 3. RAM (Linux /proc/meminfo)
+    try:
+        mem: dict[str, int] = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mem[parts[0].rstrip(":")] = int(parts[1])
+        total_kb = mem.get("MemTotal", 0)
+        avail_kb = mem.get("MemAvailable", 0)
+        if total_kb > 0:
+            used_pct = (1 - avail_kb / total_kb) * 100
+            if used_pct > 90:
+                avail_mb = avail_kb // 1024
+                alerts.append(f"🧠 *Память {used_pct:.0f}% занята*\nДоступно {avail_mb} МБ")
+    except Exception:
+        pass
+
+    for msg in alerts:
+        await send_owner_alert(msg[:40], f"🚨 *Системный алерт*\n{msg}")
+
 # ─── Database ─────────────────────────────────────────────────────────────────
 
 def init_db():
@@ -844,8 +930,6 @@ def get_auth_url(chat_id):
 
 
 # ─── Reminders ────────────────────────────────────────────────────────────────
-
-bot_app = None
 
 async def check_reminders():
     conn = sqlite3.connect("users.db")
@@ -2765,9 +2849,19 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 async def privacy_policy(request):
     return web.Response(text=PRIVACY_POLICY_HTML, content_type="text/html", charset="utf-8")
 
+async def health_check(request):
+    """Simple liveness endpoint for uptime monitors."""
+    try:
+        with sqlite3.connect("users.db") as db:
+            user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        return web.json_response({"status": "ok", "users": user_count})
+    except Exception as e:
+        return web.json_response({"status": "error", "detail": str(e)}, status=500)
+
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", home_page)
+    app.router.add_get("/health", health_check)
     app.router.add_get("/stats", stats_page)
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
@@ -2804,13 +2898,28 @@ async def main():
             logger.info(f"INCOMING non-message update: {update}")
     bot_app.add_handler(MessageHandler(filters.ALL, log_all), group=-1)
     async def error_handler(update, context):
+        global _ux_error_count, _ux_error_window_start
         logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
+        now = _time.monotonic()
+        # Rolling 5-minute window for user-facing errors
+        if now - _ux_error_window_start > 300:
+            _ux_error_count = 0
+            _ux_error_window_start = now
+        _ux_error_count += 1
+        if _ux_error_count >= 5:
+            await send_owner_alert(
+                "ux_error_spike",
+                f"⚠️ *Частые ошибки у пользователей*\n"
+                f"{_ux_error_count} ошибок за 5 минут\n\n"
+                f"`{str(context.error)[:300]}`"
+            )
     bot_app.add_error_handler(error_handler)
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(check_reminders, "interval", minutes=5)
-    scheduler.add_job(check_task_reminders, "interval", minutes=1)
-    scheduler.add_job(send_morning_digests, "interval", minutes=1)
-    scheduler.add_job(sync_calendar_events, "interval", minutes=15)
+    scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(check_reminders,       "check_reminders")),      "interval", minutes=5)
+    scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(check_task_reminders,  "check_task_reminders")), "interval", minutes=1)
+    scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(send_morning_digests,  "morning_digests")),      "interval", minutes=1)
+    scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(sync_calendar_events,  "sync_calendar")),        "interval", minutes=15)
+    scheduler.add_job(lambda: asyncio.ensure_future(monitor_system()),                                         "interval", minutes=10)
     scheduler.start()
     await start_web_server()
     await bot_app.initialize()
@@ -2826,6 +2935,15 @@ async def main():
     ])
     await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
     print("Бот запущен...")
+    # Notify owner that bot started successfully
+    try:
+        await bot_app.bot.send_message(
+            chat_id=BOT_OWNER_ID,
+            text="✅ *Get My Task Bot* запущен",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
