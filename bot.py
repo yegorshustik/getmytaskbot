@@ -1901,7 +1901,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(TEXTS[lang]["reminder_off"])
         return
     if data == "settings_apple_cal":
-        await query.answer()
+        t = TEXTS[lang]
         user = get_user(chat_id)
         token = user.get("ical_token") if user else None
         if not token:
