@@ -2062,11 +2062,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = "en"
     save_user(chat_id, lang=lang)
     log_event(chat_id, "new_user")
-    updated_user = get_user(chat_id)
-    await update.message.reply_text(
-        TEXTS[lang]["lang_set"],
-        reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
-    )
+    # Ask timezone during onboarding — required for correct reminders and calendar times
+    await show_timezone_menu(update.message, chat_id, lang, onboarding=True)
 
 async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
