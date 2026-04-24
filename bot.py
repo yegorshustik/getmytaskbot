@@ -542,6 +542,8 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Цель удалена вместе с задачами ({n} шт.).",
         "goal_deleted_tasks_kept": "🗑 Цель удалена. {n} задач(и) откреплены и остались в списке.",
         "goal_deleted_no_tasks": "🗑 Цель удалена.",
+        "ask_when": "📅 Когда планируешь это сделать?\n\nНапример: *сегодня в 17:00*, *завтра в 10:00*, *25 апреля*",
+        "ask_when_unclear": "🤔 Не понял дату. Попробуй написать, например: *завтра в 15:00* или *25 апреля в 9:00*",
         "btn_goals": "🎯 Цели",
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
@@ -738,6 +740,8 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Goal deleted along with {n} task(s).",
         "goal_deleted_tasks_kept": "🗑 Goal deleted. {n} task(s) unlinked and kept in your list.",
         "goal_deleted_no_tasks": "🗑 Goal deleted.",
+        "ask_when": "📅 When do you plan to do this?\n\nFor example: *today at 5pm*, *tomorrow at 10am*, *April 25*",
+        "ask_when_unclear": "🤔 Couldn't understand the date. Try something like: *tomorrow at 3pm* or *April 25 at 9am*",
         "btn_goals": "🎯 Goals",
         "btn_reminder_before": "⏰ Remind {min} min before",
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
@@ -935,6 +939,8 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Ціль видалена разом із задачами ({n} шт.).",
         "goal_deleted_tasks_kept": "🗑 Ціль видалена. {n} задач(і) від'єднані і залишились у списку.",
         "goal_deleted_no_tasks": "🗑 Ціль видалена.",
+        "ask_when": "📅 Коли плануєш це зробити?\n\nНаприклад: *сьогодні о 17:00*, *завтра о 10:00*, *25 квітня*",
+        "ask_when_unclear": "🤔 Не зрозумів дату. Спробуй написати, наприклад: *завтра о 15:00* або *25 квітня о 9:00*",
         "btn_goals": "🎯 Цілі",
         "btn_reminder_before": "⏰ Нагадати за {min} хв",
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
@@ -1001,25 +1007,28 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     prompts = {
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
-ВАЖНО про title: (1) Каждый title обязан содержать глагол-действие — никаких безглагольных фрагментов. (2) Если пользователь перечисляет несколько объектов при одном глаголе ("протестировать X, Y и Z") — либо создай ОДНУ задачу с общим названием ("Протестировать X, Y и Z"), либо несколько, но у каждой должен быть полный глагол: "Протестировать X", "Протестировать Y", "Протестировать Z". Никогда не создавай title вида "Логику целей" или "Привязки задач" без глагола. (3) Оцени осмысленность разбивки: если подзадачи мелкие и связанные — лучше одна общая задача.
+ВАЖНО про title: (1) Каждый title обязан содержать глагол-действие — никаких безглагольных фрагментов. (2) Если пользователь перечисляет несколько объектов при одном глаголе ("протестировать X, Y и Z") — ВСЕГДА создавай ОДНУ задачу: "Протестировать X, Y и Z". Разбивай на несколько задач ТОЛЬКО если у каждой явно разные дата/время или контекст. (3) Каждый title должен быть самодостаточным законченным действием.
+ВАЖНО про даты: (1) Если пользователь НЕ указал дату явно — верни suggested_date: null. (2) Если пользователь НЕ указал время явно — верни suggested_time: null. (3) Никогда не выдумывай дату или время — только то, что пользователь сказал напрямую. (4) "Сегодня", "завтра", "через 2 дня", конкретное число — это явное указание. Общие фразы вроде "нужно сделать", "хочу" — нет.
 Правила для времени: "через N минут/часов" — прибавь к {current_time}; "завтра", "послезавтра" и т.д. — только дата, время null если не указано явно.
-ВАЖНО про время: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Всегда возвращай время в будущем: если 07:00 уже прошло — верни 19:00; если и 19:00 прошло — верни 07:00 следующего дня.
+ВАЖНО про suggested_time: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Если время указано явно и уже прошло — флипни AM/PM (+12 ч).
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
 Если в тексте есть URL (ссылка на Zoom, Meet, сайт и т.д.) — добавь поле url с этой ссылкой. Иначе не включай поле url.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
-IMPORTANT about title: (1) Every title must contain an action verb — no fragment-only titles. (2) If the user lists multiple objects under one verb ("test X, Y and Z") — either create ONE task with a combined title ("Test X, Y and Z"), or multiple tasks each with the full verb: "Test X", "Test Y", "Test Z". Never create titles like "Goals logic" or "Task linking" without a verb. (3) Evaluate whether splitting makes sense: if subtasks are small and related — one combined task is better.
+IMPORTANT about title: (1) Every title must contain an action verb — no fragment-only titles. (2) If the user lists multiple objects under one verb ("test X, Y and Z") — ALWAYS create ONE task: "Test X, Y and Z". Split into multiple tasks ONLY if each has a clearly different date/time or context. (3) Each title must be a complete self-contained action.
+IMPORTANT about dates: (1) If the user did NOT explicitly mention a date — return suggested_date: null. (2) If the user did NOT explicitly mention a time — return suggested_time: null. (3) Never invent a date or time — only use what the user said directly. (4) "Today", "tomorrow", "in 2 days", a specific date — that's explicit. Generic phrases like "need to do", "want to" — are not.
 Time rules: "in N minutes/hours" — add to {current_time}; "tomorrow", "next week" etc — date only, time null unless explicitly stated.
-IMPORTANT about time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) Always return a future time: if 07:00 has passed return 19:00; if 19:00 has also passed return 07:00 tomorrow.
+IMPORTANT about suggested_time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) If time was explicitly stated but is in the past — flip AM/PM (+12h).
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
 If the text contains a URL (Zoom, Meet, website link, etc.) — add a url field with that link. Otherwise don't include the url field.
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
-ВАЖЛИВО про title: (1) Кожен title зобов'язаний містити дієслово-дію — жодних фрагментів без дієслова. (2) Якщо користувач перелічує кілька об'єктів при одному дієслові ("протестувати X, Y і Z") — або створи ОДНУ задачу з загальною назвою ("Протестувати X, Y і Z"), або кілька, але у кожної повинно бути повне дієслово: "Протестувати X", "Протестувати Y", "Протестувати Z". Ніколи не створюй title на кшталт "Логіку цілей" або "Прив'язку задач" без дієслова. (3) Оціни доцільність розбивки: якщо підзадачі дрібні і пов'язані — краще одна загальна задача.
+ВАЖЛИВО про title: (1) Кожен title зобов'язаний містити дієслово-дію — жодних фрагментів без дієслова. (2) Якщо користувач перелічує кілька об'єктів при одному дієслові ("протестувати X, Y і Z") — ЗАВЖДИ створюй ОДНУ задачу: "Протестувати X, Y і Z". Ділити на кілька задач ТІЛЬКИ якщо у кожної явно різна дата/час або контекст. (3) Кожен title має бути самодостатньою завершеною дією.
+ВАЖЛИВО про дати: (1) Якщо користувач НЕ вказав дату явно — повертай suggested_date: null. (2) Якщо користувач НЕ вказав час явно — повертай suggested_time: null. (3) Ніколи не вигадуй дату або час — тільки те, що користувач сказав напряму. (4) "Сьогодні", "завтра", "через 2 дні", конкретне число — це явна вказівка. Загальні фрази на кшталт "треба зробити", "хочу" — ні.
 Правила часу: "через N хвилин/годин" — додай до {current_time}; "завтра", "післязавтра" тощо — лише дата, час null якщо не вказано явно.
-ВАЖЛИВО про час: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Завжди повертай час у майбутньому: якщо 07:00 минуло — повертай 19:00; якщо й 19:00 минуло — повертай 07:00 наступного дня.
+ВАЖЛИВО про suggested_time: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Якщо час вказано явно, але вже минув — флипни AM/PM (+12 год).
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
 Якщо в тексті є URL (посилання на Zoom, Meet, сайт тощо) — додай поле url з цим посиланням. Інакше не включай поле url.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
@@ -1836,17 +1845,26 @@ def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
     )
     return ics.encode("utf-8")
 
-async def show_tasks(update, chat_id, tasks, lang, context=None):
+async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
+    """Show task cards.
+    indices: list mapping position→index in context.user_data["tasks"] for callbacks.
+             If None, position == index (default behaviour).
+    """
     user = get_user(chat_id)
-    for i, task in enumerate(tasks):
+    master_tasks = (context.user_data.get("tasks") or []) if context else []
+    for pos, task in enumerate(tasks):
+        i = indices[pos] if indices is not None else pos
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-        date_display = format_date(task["suggested_date"], lang)
         time_sep = _TIME_SEP.get(lang, " ")
+        if task.get("suggested_date"):
+            date_display = format_date(task["suggested_date"], lang)
+            date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
+        else:
+            date_line = ""
         base_text = (
             f"{emoji} *{task['title']}*\n"
             f"{task['quadrant']} — {task['quadrant_name']}\n"
-            f"📅 {date_display}"
-            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+            + (date_line + "\n" if date_line else "")
         )
         save_skip_row = [
             InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
@@ -1880,7 +1898,11 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
         if context is not None:
             cleanup = list(context.user_data.get("_cleanup_ids", []))
             cleanup.append(card_msg.message_id)
-            tasks[i]["_cleanup_ids"] = cleanup
+            # Update cleanup_ids on the master tasks list by correct index
+            if i < len(master_tasks):
+                master_tasks[i]["_cleanup_ids"] = cleanup
+            else:
+                tasks[pos]["_cleanup_ids"] = cleanup
 
 async def offer_calendar(update, chat_id, lang):
     keyboard = InlineKeyboardMarkup([[
@@ -1998,8 +2020,6 @@ async def process_and_show(update, context, text, chat_id, lang):
     for task in tasks:
         adjusted, status = adjust_task_to_future(task, tz_name)
         if status == "past":
-            time_str = task.get("suggested_time", "")
-            date_str = task.get("suggested_date", "")
             await update.message.reply_text(
                 f"⚠️ *{task.get('title', '')}*\n" + TEXTS[lang]["task_time_past"],
                 parse_mode="Markdown"
@@ -2008,8 +2028,19 @@ async def process_and_show(update, context, text, chat_id, lang):
             valid_tasks.append(adjusted)
     if not valid_tasks:
         return
+    # Store all tasks with correct indices upfront
     context.user_data["tasks"] = valid_tasks
-    await show_tasks(update, chat_id, valid_tasks, lang, context=context)
+    with_date_idx = [i for i, t in enumerate(valid_tasks) if t.get("suggested_date")]
+    no_date_idx   = [i for i, t in enumerate(valid_tasks) if not t.get("suggested_date")]
+    # Show tasks that already have a date
+    if with_date_idx:
+        await show_tasks(update, chat_id,
+                         [valid_tasks[i] for i in with_date_idx],
+                         lang, context=context, indices=with_date_idx)
+    # For tasks without a date — ask when
+    if no_date_idx:
+        context.user_data["pending_when_indices"] = no_date_idx
+        await update.message.reply_text(TEXTS[lang]["ask_when"], parse_mode="Markdown")
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -2130,6 +2161,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_text == t["btn_connect"]:
         await connect_command(update, context)
+        return
+    # ── "When?" follow-up for tasks without date ─────────────────────────────
+    pending_when = context.user_data.get("pending_when_indices")
+    if pending_when is not None:
+        tz_name = user["timezone"] if user else "Europe/Moscow"
+        parsed = await parse_time_correction(user_text, lang, tz_name)
+        if parsed.get("error"):
+            await update.message.reply_text(TEXTS[lang]["ask_when_unclear"], parse_mode="Markdown")
+            return
+        tasks = context.user_data.get("tasks", [])
+        for idx in pending_when:
+            if idx < len(tasks):
+                if parsed.get("date"):
+                    tasks[idx]["suggested_date"] = parsed["date"]
+                if parsed.get("time"):
+                    tasks[idx]["suggested_time"] = parsed["time"]
+        context.user_data.pop("pending_when_indices", None)
+        tasks_to_show = [tasks[idx] for idx in pending_when if idx < len(tasks)]
+        await show_tasks(update, chat_id, tasks_to_show, lang, context=context, indices=pending_when)
         return
     # ── Goal creation state machine ───────────────────────────────────────────
     goal_step = context.user_data.get("goal_creation_step")
@@ -2262,6 +2312,25 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="Markdown"
             )
+            return
+        # ── "When?" follow-up for tasks without date ─────────────────────────
+        pending_when = context.user_data.get("pending_when_indices")
+        if pending_when is not None:
+            tz_name = user["timezone"] if user else "Europe/Moscow"
+            parsed = await parse_time_correction(text, lang, tz_name)
+            if parsed.get("error"):
+                await update.message.reply_text(TEXTS[lang]["ask_when_unclear"], parse_mode="Markdown")
+                return
+            all_tasks = context.user_data.get("tasks", [])
+            for idx in pending_when:
+                if idx < len(all_tasks):
+                    if parsed.get("date"):
+                        all_tasks[idx]["suggested_date"] = parsed["date"]
+                    if parsed.get("time"):
+                        all_tasks[idx]["suggested_time"] = parsed["time"]
+            context.user_data.pop("pending_when_indices", None)
+            tasks_to_show = [all_tasks[idx] for idx in pending_when if idx < len(all_tasks)]
+            await show_tasks(update, chat_id, tasks_to_show, lang, context=context, indices=pending_when)
             return
         if "pending_task" in context.user_data:
             await handle_reschedule(update, context, text, chat_id, lang)
