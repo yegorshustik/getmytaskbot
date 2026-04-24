@@ -451,8 +451,9 @@ TEXTS = {
         "btn_reminder_change": "🕐 Изменить время",
         "btn_reminder_disable": "🔕 Отключить",
         "btn_archive": "🗂 Архив задач",
-        "archive_header": "🗂 *Архив выполненных задач:*\n\n",
+        "archive_header": "🗂 *Архив выполненных задач*",
         "archive_empty": "Архив пуст — нет прошедших задач.",
+        "btn_archive_next": "Далее →",
         "btn_reminder_before": "⏰ Напомнить за {min} мин",
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
@@ -577,8 +578,9 @@ TEXTS = {
         "btn_reminder_change": "🕐 Change time",
         "btn_reminder_disable": "🔕 Disable",
         "btn_archive": "🗂 Task archive",
-        "archive_header": "🗂 *Completed tasks archive:*\n\n",
+        "archive_header": "🗂 *Completed tasks archive*",
         "archive_empty": "Archive is empty — no past tasks.",
+        "btn_archive_next": "Next →",
         "btn_reminder_before": "⏰ Remind {min} min before",
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
         "reminder_before_set": "✅ Will remind {min} min before task.",
@@ -703,8 +705,9 @@ TEXTS = {
         "btn_reminder_change": "🕐 Змінити час",
         "btn_reminder_disable": "🔕 Вимкнути",
         "btn_archive": "🗂 Архів задач",
-        "archive_header": "🗂 *Архів виконаних задач:*\n\n",
+        "archive_header": "🗂 *Архів виконаних задач*",
         "archive_empty": "Архів порожній — немає минулих задач.",
+        "btn_archive_next": "Далі →",
         "btn_reminder_before": "⏰ Нагадати за {min} хв",
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
@@ -1823,6 +1826,62 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(TEXTS[lang]["error"] + str(e))
 
+_ARCHIVE_DATES_PER_PAGE = 3
+
+async def send_archive_page(query, chat_id: int, lang: str, page: int = 0):
+    t = TEXTS[lang]
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+
+    with sqlite3.connect("users.db") as db:
+        all_dates = [
+            r[0] for r in db.execute(
+                "SELECT DISTINCT suggested_date FROM tasks WHERE chat_id=? AND suggested_date < ? ORDER BY suggested_date DESC",
+                (chat_id, today)
+            ).fetchall()
+        ]
+
+    if not all_dates:
+        await query.message.reply_text(t["archive_empty"])
+        return
+
+    start = page * _ARCHIVE_DATES_PER_PAGE
+    page_dates = all_dates[start: start + _ARCHIVE_DATES_PER_PAGE]
+    has_more = len(all_dates) > start + _ARCHIVE_DATES_PER_PAGE
+
+    placeholders = ",".join("?" * len(page_dates))
+    with sqlite3.connect("users.db") as db:
+        rows = db.execute(
+            f"""SELECT title, quadrant, suggested_date, suggested_time FROM tasks
+                WHERE chat_id=? AND suggested_date IN ({placeholders})
+                ORDER BY suggested_date DESC, COALESCE(suggested_time, '00:00') ASC""",
+            (chat_id, *page_dates)
+        ).fetchall()
+
+    from collections import defaultdict as _dd
+    by_date = _dd(list)
+    for title, quadrant, date, time in rows:
+        by_date[date].append((title, quadrant, time))
+
+    blocks = [t["archive_header"]]
+    for date in page_dates:
+        lines = [f"*{format_date(date, lang)}*"]
+        for title, quadrant, time in by_date[date]:
+            emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
+            if time:
+                lines.append(f"{time}  {emoji} {title}")
+            else:
+                lines.append(f"{emoji} {title}")
+        blocks.append("\n".join(lines))
+
+    text = "\n\n".join(blocks)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t["btn_archive_next"], callback_data=f"archive_page_{page + 1}")
+    ]]) if has_more else None
+
+    await query.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1916,34 +1975,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             t["apple_cal_info"], parse_mode="Markdown", reply_markup=keyboard
         )
         return
-    if data == "settings_archive":
+    if data == "settings_archive" or data.startswith("archive_page_"):
         await query.edit_message_reply_markup(reply_markup=None)
-        user = get_user(chat_id)
-        tz_name = user["timezone"] if user else "Europe/Moscow"
-        now = datetime.now(ZoneInfo(tz_name))
-        today = now.strftime("%Y-%m-%d")
-        current_time = now.strftime("%H:%M")
-        conn = sqlite3.connect("users.db")
-        rows = conn.execute(
-            """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
-               WHERE chat_id=? AND suggested_date < ?
-               ORDER BY suggested_date DESC, suggested_time DESC LIMIT 20""",
-            (chat_id, today)
-        ).fetchall()
-        conn.close()
-        t = TEXTS[lang]
-        if not rows:
-            await query.message.reply_text(t["archive_empty"])
-            return
-        text = t["archive_header"]
-        for title, quadrant, date, time in rows:
-            emoji = QUADRANT_EMOJI.get(quadrant, "⚪")
-            date_display = format_date(date, lang) if date else "—"
-            if time:
-                text += f"{time}  {emoji} *{title}* — {date_display}\n"
-            else:
-                text += f"{emoji} *{title}* — {date_display}\n"
-        await query.message.reply_text(text, parse_mode="Markdown")
+        page = 0
+        if data.startswith("archive_page_"):
+            page = int(data.split("_")[-1])
+        await send_archive_page(query, chat_id, lang, page)
         return
     if data == "settings_reminder":
         await query.edit_message_reply_markup(reply_markup=None)
