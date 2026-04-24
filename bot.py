@@ -294,6 +294,7 @@ def get_user(chat_id):
             "reminder_before": row[8] if len(row) > 8 and row[8] is not None else 30,
             "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
             "pending_task_json": row[10] if len(row) > 10 else None,
+            "ical_token": row[12] if len(row) > 12 else None,
         }
     return None
 
@@ -1900,7 +1901,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(TEXTS[lang]["reminder_off"])
         return
     if data == "settings_apple_cal":
-        await query.edit_message_reply_markup(reply_markup=None)
+        await query.answer()
         user = get_user(chat_id)
         token = user.get("ical_token") if user else None
         if not token:
