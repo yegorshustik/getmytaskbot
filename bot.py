@@ -301,6 +301,7 @@ def get_user(chat_id):
             "reminder_before": row[8] if len(row) > 8 and row[8] is not None else 30,
             "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
             "pending_task_json": row[10] if len(row) > 10 else None,
+            "last_active": row[11] if len(row) > 11 else None,
             "ical_token": row[12] if len(row) > 12 else None,
             "last_reengagement": row[13] if len(row) > 13 else None,
             "reengagement_count": row[14] if len(row) > 14 else 0,
