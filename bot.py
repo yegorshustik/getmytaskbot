@@ -1756,7 +1756,7 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         by_date[date].append((title, quadrant, time, is_done))
 
     sorted_dates = sorted(by_date.keys())
-    visible_dates = sorted_dates  # Show all upcoming dates (today, tomorrow, and beyond)
+    visible_dates = [d for d in sorted_dates if d <= tomorrow_str]  # Show today and tomorrow only
 
     blocks = []
     for date in visible_dates:
