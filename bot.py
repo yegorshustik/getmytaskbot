@@ -2770,6 +2770,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown",
                 reply_markup=added_markup
             )
+            await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
             user_fresh = get_user(chat_id)
             if not user_fresh["first_task_done"]:
                 save_user(chat_id, first_task_done=1)
@@ -2816,6 +2817,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown",
                         reply_markup=added_markup
                     )
+                    await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
                     user_fresh = get_user(chat_id)
                     if not user_fresh["first_task_done"]:
                         save_user(chat_id, first_task_done=1)
@@ -2825,35 +2827,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     save_task_to_db(chat_id, task)
                     await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
                 return
-        # Check if user has active goals — offer to link this task
-        active_goals = get_active_goals(chat_id)
-        if active_goals and not task.get("goal_id"):
-            goal = active_goals[0]  # offer link to most recent goal
-            t_cb = TEXTS[lang]
-            keyboard = InlineKeyboardMarkup([[
-                InlineKeyboardButton(t_cb["btn_goal_link_yes"], callback_data=f"goal_link_yes_{goal['id']}_{idx}"),
-                InlineKeyboardButton(t_cb["btn_goal_link_no"],  callback_data=f"goal_link_no_{idx}"),
-            ]])
-            await query.edit_message_reply_markup(reply_markup=None)
-            await query.message.reply_text(
-                t_cb["goal_link_ask"].format(goal=goal["title"]),
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
-        else:
-            save_task_to_db(chat_id, task)
-            emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-            date_display = format_date(task["suggested_date"], lang)
-            time_sep = _TIME_SEP.get(lang, " ")
-            card = (
-                f"{emoji} *{task['title']}*\n"
-                f"{task['quadrant']} — {task['quadrant_name']}\n"
-                f"📅 {date_display}"
-                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-                f"_{task['reason']}_\n\n"
-                + TEXTS[lang]["task_saved"]
-            )
-            await query.edit_message_text(card, parse_mode="Markdown")
+        save_task_to_db(chat_id, task)
+        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
+        date_display = format_date(task["suggested_date"], lang)
+        time_sep = _TIME_SEP.get(lang, " ")
+        card = (
+            f"{emoji} *{task['title']}*\n"
+            f"{task['quadrant']} — {task['quadrant_name']}\n"
+            f"📅 {date_display}"
+            + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+            f"_{task['reason']}_\n\n"
+            + TEXTS[lang]["task_saved"]
+        )
+        await query.edit_message_text(card, parse_mode="Markdown")
+        await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
         user_fresh = get_user(chat_id)
         if not user_fresh["first_task_done"]:
             save_user(chat_id, first_task_done=1)
@@ -2969,6 +2956,44 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 # ─── Goals ────────────────────────────────────────────────────────────────────
+
+_STOP_WORDS = {
+    "я", "в", "на", "с", "к", "по", "и", "или", "не", "это", "то", "что", "как",
+    "до", "за", "из", "для", "при", "хочу", "хочет", "нужно", "надо", "буду",
+    "i", "to", "the", "a", "an", "of", "is", "my", "do", "want", "need", "will",
+    "я", "у", "від", "до", "та", "або", "не", "що", "як", "це",
+}
+
+def _task_matches_goal(task_title: str, goal_title: str) -> bool:
+    """True if task title shares meaningful words with the goal title."""
+    def words(s):
+        return {w.lower().strip(".,!?") for w in s.split()} - _STOP_WORDS
+    return bool(words(task_title) & words(goal_title))
+
+async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: dict, task_idx: str):
+    """After saving a task, offer to link it to an active goal if relevant."""
+    if task.get("goal_id"):
+        return  # already linked
+    active_goals = get_active_goals(chat_id)
+    if not active_goals:
+        return
+    goal = next(
+        (g for g in active_goals if _task_matches_goal(task.get("title", ""), g["title"])),
+        None
+    )
+    if not goal:
+        return
+    t = TEXTS[lang]
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t["btn_goal_link_yes"], callback_data=f"goal_link_yes_{goal['id']}_{task_idx}"),
+        InlineKeyboardButton(t["btn_goal_link_no"],  callback_data=f"goal_link_no_{task_idx}"),
+    ]])
+    await message.reply_text(
+        t["goal_link_ask"].format(goal=goal["title"]),
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
 
 def save_goal_to_db(chat_id: int, title: str, criteria: str, deadline: str,
                     quadrant: str = "Q2", quadrant_name: str = "") -> int:
