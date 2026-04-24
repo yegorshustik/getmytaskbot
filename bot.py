@@ -528,7 +528,7 @@ TEXTS = {
         "goals_header": "🎯 *Твои цели:*\n\n",
         "goal_progress": "{bar} {pct}% — {done}/{total} задач",
         "goal_no_tasks": "_задачи ещё не добавлены_",
-        "goal_deadline_label": "📅 до {date}",
+        "goal_deadline_label": "до {date}",
         "goal_done_msg": "🏆 *Цель выполнена!*\n\nВсе задачи закрыты — ты это сделал! 🎉",
         "goal_link_ask": "📎 Эта задача похожа на шаг к цели *\"{goal}\"*. Привязать её?",
         "btn_goal_link_yes": "✅ Привязать",
@@ -724,7 +724,7 @@ TEXTS = {
         "goals_header": "🎯 *Your goals:*\n\n",
         "goal_progress": "{bar} {pct}% — {done}/{total} tasks",
         "goal_no_tasks": "_no tasks added yet_",
-        "goal_deadline_label": "📅 due {date}",
+        "goal_deadline_label": "due {date}",
         "goal_done_msg": "🏆 *Goal achieved!*\n\nAll tasks are done — you did it! 🎉",
         "goal_link_ask": "📎 This task looks like a step toward your goal *\"{goal}\"*. Link it?",
         "btn_goal_link_yes": "✅ Link it",
@@ -921,7 +921,7 @@ TEXTS = {
         "goals_header": "🎯 *Твої цілі:*\n\n",
         "goal_progress": "{bar} {pct}% — {done}/{total} задач",
         "goal_no_tasks": "_задачі ще не додані_",
-        "goal_deadline_label": "📅 до {date}",
+        "goal_deadline_label": "до {date}",
         "goal_done_msg": "🏆 *Ціль виконана!*\n\nВсі задачі закриті — ти це зробив! 🎉",
         "goal_link_ask": "📎 Ця задача схожа на крок до цілі *\"{goal}\"*. Прив'язати її?",
         "btn_goal_link_yes": "✅ Прив'язати",
@@ -3207,7 +3207,7 @@ def _render_goal_card(g: dict, lang: str) -> str:
     deadline_str = format_date(g["deadline"], lang) if g.get("deadline") else ""
     deadline_label = (t["goal_deadline_label"].format(date=deadline_str) + "\n") if deadline_str else ""
     progress_str = t["goal_progress"].format(bar=bar, pct=pct, done=done, total=total) if total > 0 else t["goal_no_tasks"]
-    return f"🎯 *{g['title']}*\n{deadline_label}{progress_str}"
+    return f"📌 *{g['title']}*\n{deadline_label}{progress_str}"
 
 async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -3218,7 +3218,6 @@ async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not goals:
         await update.message.reply_text(t["goals_empty"], parse_mode="Markdown")
         return
-    await update.message.reply_text(t["goals_header"], parse_mode="Markdown")
     for g in goals:
         text = _render_goal_card(g, lang)
         keyboard = InlineKeyboardMarkup([[
