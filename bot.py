@@ -421,7 +421,7 @@ TEXTS = {
         "tasks_header": "📋 *Мои задачи:*\n\n",
         "tasks_empty": "У вас пока нет предстоящих задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
-        "tasks_today": "Сегодня",
+        "tasks_today": "Задачи на сегодня",
         "tasks_tomorrow": "Завтра",
         "tasks_more_days": "...и ещё {n} {days}",
         "tasks_day": "день",
@@ -545,7 +545,7 @@ TEXTS = {
         "tasks_header": "📋 *My tasks:*\n\n",
         "tasks_empty": "You have no upcoming tasks.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
-        "tasks_today": "Today",
+        "tasks_today": "Tasks for today",
         "tasks_tomorrow": "Tomorrow",
         "tasks_more_days": "...and {n} more {days}",
         "tasks_day": "day",
@@ -669,7 +669,7 @@ TEXTS = {
         "tasks_header": "📋 *Мої задачі:*\n\n",
         "tasks_empty": "У вас поки немає майбутніх задач.",
         "tasks_item": "{emoji} *{title}* — {date}\n",
-        "tasks_today": "Сьогодні",
+        "tasks_today": "Задачі на сьогодні",
         "tasks_tomorrow": "Завтра",
         "tasks_more_days": "...і ще {n} {days}",
         "tasks_day": "день",
@@ -1408,7 +1408,7 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
     for date in visible_dates:
         formatted = format_date(date, lang)
         if date == today_str:
-            header = f"*{t['tasks_today']}* — {formatted}"
+            header = f"*{t['tasks_today']} — {formatted}:*"
         elif date == tomorrow_str:
             header = f"*{t['tasks_tomorrow']}* — {formatted}"
         else:
@@ -1423,7 +1423,7 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
                 lines.append(f"{icon} {title}")
         blocks.append("\n".join(lines))
 
-    text = t["tasks_header"] + "\n\n".join(blocks)
+    text = "\n\n".join(blocks)
     if hidden_count > 0:
         text += "\n\n" + t["tasks_more_days"].format(n=hidden_count, days=_days_word(hidden_count, lang, t))
     return text
