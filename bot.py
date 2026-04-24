@@ -1071,8 +1071,8 @@ def add_to_calendar(chat_id, task):
         }
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
-    save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
-    return result.get("htmlLink")
+    task_id = save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
+    return result.get("htmlLink"), task_id
 
 def describe_recurrence(recurrence: dict, lang: str) -> str:
     t = TEXTS[lang]
@@ -1134,12 +1134,21 @@ def add_recurring_to_calendar(chat_id, task):
 
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url, goal_id) VALUES (?,?,?,?,?,?,?,0,?,?,?,?)",
         (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""),
          task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id,
          task.get("url") or task.get("task_url"), task.get("goal_id"))
     )
+    conn.commit()
+    task_id = cur.lastrowid
+    conn.close()
+    return task_id
+
+def link_task_to_goal(task_id: int, goal_id: int):
+    """Update an already-saved task row to link it to a goal (no duplicate insert)."""
+    conn = sqlite3.connect("users.db")
+    conn.execute("UPDATE tasks SET goal_id=? WHERE id=?", (goal_id, task_id))
     conn.commit()
     conn.close()
 
@@ -1901,7 +1910,7 @@ async def handle_reschedule(update, context, text, chat_id, lang):
             return
         del context.user_data["pending_task"]
         msg = await update.message.reply_text(TEXTS[lang]["adding"])
-        link = add_to_calendar(chat_id, task)
+        link, _ = add_to_calendar(chat_id, task)
         added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
         await msg.edit_text(TEXTS[lang]["added"], reply_markup=added_markup)
         user = get_user(chat_id)
@@ -2351,7 +2360,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if task_idx < len(tasks):
             task = tasks[task_idx]
             task["goal_id"] = goal_id
-            save_task_to_db(chat_id, task)
+            # UPDATE the already-saved row instead of inserting a duplicate
+            saved_task_id = context.user_data.get("saved_task_ids", {}).get(task_idx)
+            if saved_task_id:
+                link_task_to_goal(saved_task_id, goal_id)
+            else:
+                save_task_to_db(chat_id, task)  # fallback: task wasn't tracked
             goals = get_active_goals(chat_id)
             goal_title = next((g["title"] for g in goals if g["id"] == goal_id), "")
             await query.edit_message_reply_markup(reply_markup=None)
@@ -2364,7 +2378,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tasks = context.user_data.get("tasks", [])
         if task_idx < len(tasks):
             task = tasks[task_idx]
-            save_task_to_db(chat_id, task)
+            # Task was already saved — just dismiss the prompt
             emoji = QUADRANT_EMOJI.get(task.get("quadrant", ""), "⚪")
             date_display = format_date(task.get("suggested_date", ""), lang)
             time_sep = _TIME_SEP.get(lang, " ")
@@ -2666,7 +2680,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         return
                     msg = await query.message.reply_text(TEXTS[lang]["adding"])
                     try:
-                        link = add_to_calendar(chat_id, task)
+                        link, _ = add_to_calendar(chat_id, task)
                         await msg.delete()
                         added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
                         await query.message.reply_text(
@@ -2694,7 +2708,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_force:
             msg = await query.message.reply_text(TEXTS[lang]["adding"])
             try:
-                link = add_to_calendar(chat_id, task)
+                link, _ = add_to_calendar(chat_id, task)
                 await msg.delete()
                 added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
                 await query.message.reply_text(
@@ -2757,7 +2771,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
-            link = add_to_calendar(chat_id, task)  # saves to DB internally
+            link, task_id = add_to_calendar(chat_id, task)  # saves to DB internally
+            context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
             await msg.delete()
             success_texts = {
                 "ru": f"✅ *{task['title']}* сохранена в задачах и добавлена в Google Calendar",
@@ -2809,7 +2824,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_reply_markup(reply_markup=None)
                 msg = await query.message.reply_text(TEXTS[lang]["adding"])
                 try:
-                    link = add_to_calendar(chat_id, task)
+                    link, task_id = add_to_calendar(chat_id, task)
+                    context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
                     await msg.delete()
                     added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
                     await query.message.reply_text(
@@ -2827,7 +2843,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     save_task_to_db(chat_id, task)
                     await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
                 return
-        save_task_to_db(chat_id, task)
+        task_id = save_task_to_db(chat_id, task)
+        context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
         time_sep = _TIME_SEP.get(lang, " ")
