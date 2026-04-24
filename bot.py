@@ -1401,8 +1401,8 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         by_date[date].append((title, quadrant, time, is_done))
 
     sorted_dates = sorted(by_date.keys())
-    visible_dates = sorted_dates[:3]
-    hidden_count = len(sorted_dates) - len(visible_dates)
+    visible_dates = [d for d in sorted_dates if d == today_str]
+    hidden_count = 0
 
     blocks = []
     for date in visible_dates:
