@@ -772,7 +772,7 @@ def get_active_task_count(chat_id):
     tz_name = user["timezone"] if user else "Europe/Moscow"
     today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
     count = conn.execute(
-        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date >= ?",
+        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date = ? AND done=0",
         (chat_id, today)
     ).fetchone()[0]
     conn.close()
