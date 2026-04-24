@@ -2521,13 +2521,18 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(before_label, callback_data="settings_reminder_before")],
         [InlineKeyboardButton(t["btn_archive"], callback_data="settings_archive")],
     ]
-    if user and user["calendar_connected"]:
-        keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
-    else:
-        keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+    gcal_connected = bool(user and user.get("calendar_connected"))
     ical_subscribed = bool(user and user.get("ical_token"))
-    apple_cal_label = t["btn_apple_cal_connected"] if ical_subscribed else t["btn_apple_cal"]
-    keyboard_rows.append([InlineKeyboardButton(apple_cal_label, callback_data="settings_apple_cal")])
+    if gcal_connected:
+        # Google Calendar подключён → показываем только "Отключить", Apple Calendar скрываем
+        keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
+    elif ical_subscribed:
+        # Apple Calendar подписан → показываем только Apple (статус), Google скрываем
+        keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal_connected"], callback_data="settings_apple_cal")])
+    else:
+        # Ничего не подключено → показываем оба варианта
+        keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+        keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
     keyboard_rows.append([
