@@ -222,6 +222,8 @@ def init_db():
         ("pending_task_json", "TEXT DEFAULT NULL"),
         ("last_active", "TEXT DEFAULT NULL"),
         ("ical_token", "TEXT DEFAULT NULL"),
+        ("last_reengagement", "TEXT DEFAULT NULL"),
+        ("reengagement_count", "INTEGER DEFAULT 0"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -299,6 +301,8 @@ def get_user(chat_id):
             "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
             "pending_task_json": row[10] if len(row) > 10 else None,
             "ical_token": row[12] if len(row) > 12 else None,
+            "last_reengagement": row[13] if len(row) > 13 else None,
+            "reengagement_count": row[14] if len(row) > 14 else 0,
         }
     return None
 
@@ -306,6 +310,7 @@ _ALLOWED_USER_COLS = {
     "lang", "calendar_token", "first_task_done", "calendar_connected",
     "timezone", "reminder_time", "reminder_enabled", "reminder_before",
     "reminder_minutes", "pending_task_json", "last_active", "ical_token",
+    "last_reengagement", "reengagement_count",
 }
 
 def save_user(chat_id, **kwargs):
@@ -462,6 +467,11 @@ TEXTS = {
         "morning_first_offer": "\n\n_Напоминание приходит в {time}. Хотите изменить время?_",
         "btn_reminder_change": "🕐 Изменить время",
         "btn_reminder_disable": "🔕 Отключить",
+        "reengagement": [
+            "Давно не было задач 👀\n\nЕсть что запланировать? Просто напиши или надиктуй — я разберу за секунду.",
+            "Кстати, задачи можно надиктовывать голосом 🎙\n\nСкажи что нужно сделать — я сам создам задачу и добавлю в календарь.",
+            "Уже несколько дней без задач 🙂\n\nЕсли решишь вернуться — просто напиши. Я здесь.",
+        ],
         "btn_archive": "🗂 Архив задач",
         "archive_header": "🗂 *Архив выполненных задач*",
         "archive_empty": "Архив пуст — нет прошедших задач.",
@@ -597,6 +607,11 @@ TEXTS = {
         "morning_first_offer": "\n\n_Reminder comes at {time}. Want to change it?_",
         "btn_reminder_change": "🕐 Change time",
         "btn_reminder_disable": "🔕 Disable",
+        "reengagement": [
+            "No tasks in a while 👀\n\nSomething to plan? Just type or record a voice message — I'll handle it in seconds.",
+            "Quick tip: you can dictate tasks by voice 🎙\n\nJust say what needs to be done — I'll create a task and add it to your calendar.",
+            "A few days without tasks 🙂\n\nIf you feel like coming back — just say the word. I'm here.",
+        ],
         "btn_archive": "🗂 Task archive",
         "archive_header": "🗂 *Completed tasks archive*",
         "archive_empty": "Archive is empty — no past tasks.",
@@ -732,6 +747,11 @@ TEXTS = {
         "morning_first_offer": "\n\n_Нагадування приходить о {time}. Бажаєте змінити час?_",
         "btn_reminder_change": "🕐 Змінити час",
         "btn_reminder_disable": "🔕 Вимкнути",
+        "reengagement": [
+            "Давно не було задач 👀\n\nЄ що запланувати? Просто напиши або надиктуй — я розберу за секунду.",
+            "До речі, задачі можна надиктовувати голосом 🎙\n\nСкажи що треба зробити — я сам створю задачу і додам до календаря.",
+            "Вже кілька днів без задач 🙂\n\nЯкщо вирішиш повернутись — просто напиши. Я тут.",
+        ],
         "btn_archive": "🗂 Архів задач",
         "archive_header": "🗂 *Архів виконаних задач*",
         "archive_empty": "Архів порожній — немає минулих задач.",
@@ -1307,6 +1327,56 @@ async def send_morning_digests():
             await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
         except Exception as e:
             logger.error(f"Morning digest error for {chat_id}: {e}")
+
+# ─── Re-engagement ────────────────────────────────────────────────────────────
+
+_REENGAGEMENT_HOUR = 10      # send at 10:xx in user's local timezone
+_REENGAGEMENT_INACTIVE_DAYS = 3   # trigger after 3 days of inactivity
+_REENGAGEMENT_COOLDOWN_DAYS = 7   # minimum gap between messages
+_REENGAGEMENT_MAX_COUNT = 3       # stop after 3 messages total
+
+async def check_reengagement():
+    """Send re-engagement nudges to inactive users at 10:00 their local time."""
+    conn = sqlite3.connect("users.db")
+    candidates = conn.execute("""
+        SELECT chat_id, lang, timezone, reengagement_count
+        FROM users
+        WHERE lang IS NOT NULL
+          AND last_active < datetime('now', ?)
+          AND reengagement_count < ?
+          AND (last_reengagement IS NULL OR last_reengagement < datetime('now', ?))
+    """, (
+        f"-{_REENGAGEMENT_INACTIVE_DAYS} days",
+        _REENGAGEMENT_MAX_COUNT,
+        f"-{_REENGAGEMENT_COOLDOWN_DAYS} days",
+    )).fetchall()
+    conn.close()
+
+    for chat_id, lang, tz_name, count in candidates:
+        try:
+            tz = ZoneInfo(tz_name or "Europe/Moscow")
+            now = datetime.now(tz)
+            if now.hour != _REENGAGEMENT_HOUR:
+                continue
+            # Dedup: only once per day using sent_reminders
+            today = now.strftime("%Y-%m-%d")
+            if reminder_already_sent(chat_id, "__reengagement__", today):
+                continue
+            mark_reminder_sent(chat_id, "__reengagement__", today)
+
+            lang = lang or "ru"
+            messages = TEXTS[lang]["reengagement"]
+            text = messages[min(count, len(messages) - 1)]
+
+            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+            # Update counters
+            save_user(chat_id,
+                      last_reengagement=datetime.now(_utc.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                      reengagement_count=count + 1)
+            logger.info(f"[reengagement] sent #{count+1} to {chat_id}")
+        except Exception as e:
+            logger.warning(f"[reengagement] failed for {chat_id}: {e}")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -3290,6 +3360,7 @@ async def main():
     scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(check_task_reminders,  "check_task_reminders")), "interval", minutes=1)
     scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(send_morning_digests,  "morning_digests")),      "interval", minutes=1)
     scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(sync_calendar_events,  "sync_calendar")),        "interval", minutes=15)
+    scheduler.add_job(lambda: asyncio.ensure_future(_safe_job(check_reengagement,    "reengagement")),         "interval", minutes=30)
     scheduler.add_job(lambda: asyncio.ensure_future(monitor_system()),                                         "interval", minutes=10)
     scheduler.start()
     await start_web_server()
