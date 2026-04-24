@@ -2107,7 +2107,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t["goal_ask_criteria"], parse_mode="Markdown")
         return
     if goal_step == "criteria":
-        draft = context.user_data.pop("goal_creation_step", None) and context.user_data.get("goal_draft", {})
         context.user_data.pop("goal_creation_step", None)
         draft = context.user_data.pop("goal_draft", {})
         goal_id = save_goal_to_db(
@@ -2307,8 +2306,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_idx = int(data.split("_")[3])
         tasks = context.user_data.get("tasks", [])
         if task_idx < len(tasks):
-            save_task_to_db(chat_id, tasks[task_idx])
-        await query.edit_message_reply_markup(reply_markup=None)
+            task = tasks[task_idx]
+            save_task_to_db(chat_id, task)
+            emoji = QUADRANT_EMOJI.get(task.get("quadrant", ""), "⚪")
+            date_display = format_date(task.get("suggested_date", ""), lang)
+            time_sep = _TIME_SEP.get(lang, " ")
+            card = (
+                f"{emoji} *{task['title']}*\n"
+                f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
+                f"📅 {date_display}"
+                + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
+                + TEXTS[lang]["task_saved"]
+            )
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(card, parse_mode="Markdown")
         return
     if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
         if chat_id != BOT_OWNER_ID:
