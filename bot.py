@@ -367,11 +367,19 @@ TEXTS = {
         "connect_link": "🔗 Подключите Google Calendar:",
         "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать вам о задачах.",
         "btn_apple_cal": "🍎 Apple Calendar",
+        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
         "apple_cal_info": (
             "🍎 *Подписка на Apple Calendar*\n\n"
             "Нажми кнопку ниже — Apple Calendar откроется и предложит подписаться.\n\n"
             "Все задачи из бота автоматически появятся в твоём календаре и будут обновляться каждый час."
         ),
+        "apple_cal_info_gcal": (
+            "🍎 *Подписка на Apple Calendar*\n\n"
+            "⚠️ У тебя уже подключён Google Calendar — задачи из бота уже попадают в Apple Calendar через него.\n\n"
+            "Подписка нужна только если ты хочешь видеть задачи в отдельном календаре, не через Google.\n\n"
+            "_Если подпишешься — задачи появятся дважды._"
+        ),
+        "apple_cal_status": "✅ Подписка активна",
         "btn_apple_cal_open": "🍎 Открыть в Apple Calendar",
         "btn_feedback": "✉️ Написать нам",
         "feedback_prompt": "✉️ Напишите ваше сообщение — текст или голосовое. Мы читаем каждое обращение.",
@@ -494,11 +502,19 @@ TEXTS = {
         "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
         "btn_apple_cal": "🍎 Apple Calendar",
+        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
         "apple_cal_info": (
             "🍎 *Apple Calendar Subscription*\n\n"
             "Tap the button below — Apple Calendar will open and offer to subscribe.\n\n"
             "All your bot tasks will appear in your calendar and update every hour."
         ),
+        "apple_cal_info_gcal": (
+            "🍎 *Apple Calendar Subscription*\n\n"
+            "⚠️ You already have Google Calendar connected — bot tasks already appear in Apple Calendar through it.\n\n"
+            "Subscribe only if you want tasks in a separate calendar, not via Google.\n\n"
+            "_If you subscribe, tasks will appear twice._"
+        ),
+        "apple_cal_status": "✅ Subscription active",
         "btn_apple_cal_open": "🍎 Open in Apple Calendar",
         "btn_feedback": "✉️ Contact us",
         "feedback_prompt": "✉️ Send us a message — text or voice. We read every submission.",
@@ -621,11 +637,19 @@ TEXTS = {
         "connect_link": "🔗 Підключіть Google Calendar:",
         "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму вам про задачі.",
         "btn_apple_cal": "🍎 Apple Calendar",
+        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
         "apple_cal_info": (
             "🍎 *Підписка на Apple Calendar*\n\n"
             "Натисни кнопку нижче — Apple Calendar відкриється і запропонує підписатися.\n\n"
             "Всі задачі з бота автоматично з'являться у твоєму календарі й оновлюватимуться щогодини."
         ),
+        "apple_cal_info_gcal": (
+            "🍎 *Підписка на Apple Calendar*\n\n"
+            "⚠️ У тебе вже підключено Google Calendar — задачі з бота вже потрапляють в Apple Calendar через нього.\n\n"
+            "Підписка потрібна лише якщо хочеш бачити задачі в окремому календарі, не через Google.\n\n"
+            "_Якщо підпишешся — задачі з'являться двічі._"
+        ),
+        "apple_cal_status": "✅ Підписка активна",
         "btn_apple_cal_open": "🍎 Відкрити в Apple Calendar",
         "btn_feedback": "✉️ Написати нам",
         "feedback_prompt": "✉️ Напишіть ваше повідомлення — текст або голосове. Ми читаємо кожне звернення.",
@@ -1967,11 +1991,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             token = secrets.token_urlsafe(24)
             save_user(chat_id, ical_token=token)
         open_url = f"{BASE_URL}/ical-open/{token}"
+        gcal_connected = bool(user and user.get("calendar_connected"))
+        info_text = t["apple_cal_info_gcal"] if gcal_connected else t["apple_cal_info"]
+        # If already subscribed — show status line on top
+        if user and user.get("ical_token"):
+            info_text = f"{t['apple_cal_status']}\n\n" + info_text
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)
         ]])
         await query.message.reply_text(
-            t["apple_cal_info"], parse_mode="Markdown", reply_markup=keyboard
+            info_text, parse_mode="Markdown", reply_markup=keyboard
         )
         return
     if data == "settings_archive" or data.startswith("archive_page_"):
@@ -2496,7 +2525,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
     else:
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
-    keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")])
+    ical_subscribed = bool(user and user.get("ical_token"))
+    apple_cal_label = t["btn_apple_cal_connected"] if ical_subscribed else t["btn_apple_cal"]
+    keyboard_rows.append([InlineKeyboardButton(apple_cal_label, callback_data="settings_apple_cal")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
     keyboard_rows.append([
