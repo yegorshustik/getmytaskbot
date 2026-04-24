@@ -1554,14 +1554,15 @@ async def show_tasks(update, chat_id, tasks, lang, context=None):
             ])
         else:
             text = base_text + f"_{task['reason']}_"
-            apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
-            if user and user["calendar_connected"]:
-                keyboard = InlineKeyboardMarkup([
-                    [apple_btn],
-                    save_skip_row,
-                ])
+            gcal_connected = bool(user and user.get("calendar_connected"))
+            ical_subscribed = bool(user and user.get("ical_token"))
+            if gcal_connected or ical_subscribed:
+                # Calendar is already set up — sync happens automatically, no extra button needed
+                keyboard = InlineKeyboardMarkup([save_skip_row])
             else:
+                # No calendar connected — offer both options
                 gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
+                apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
                 keyboard = InlineKeyboardMarkup([
                     [gcal_btn, apple_btn],
                     save_skip_row,
@@ -2707,8 +2708,8 @@ async def oauth_callback(request):
                     + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
                     f"_{task.get('reason', '')}_"
                 )
+                # Google Calendar just connected — sync is automatic, no extra calendar buttons
                 keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")],
                     [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
                      InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
                 ])
