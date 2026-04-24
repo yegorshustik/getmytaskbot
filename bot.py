@@ -234,6 +234,23 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(google_event_id)")
+    # ── Remove duplicate tasks ─────────────────────────────────────────────────
+    # Step 1: if a group has both a bot-created (no event_id) and a Calendar-synced row, drop the bot one
+    c.execute("""
+        DELETE FROM tasks
+        WHERE google_event_id IS NULL
+          AND (chat_id || '|' || title || '|' || suggested_date || '|' || COALESCE(suggested_time,'')) IN (
+              SELECT chat_id || '|' || title || '|' || suggested_date || '|' || COALESCE(suggested_time,'')
+              FROM tasks WHERE google_event_id IS NOT NULL
+          )
+    """)
+    # Step 2: for any remaining duplicates (both without event_id), keep the latest
+    c.execute("""
+        DELETE FROM tasks WHERE id NOT IN (
+            SELECT MAX(id) FROM tasks
+            GROUP BY chat_id, title, suggested_date, COALESCE(suggested_time, '')
+        )
+    """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS recurring_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1055,14 +1072,20 @@ async def sync_calendar_events():
 
             # ── Add new events not yet in bot DB ───────────────────────────
             with sqlite3.connect("users.db") as db:
-                existing = {
+                # Dedup by google_event_id
+                existing_ids = {
                     row[0] for row in
                     db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL", (chat_id,)).fetchall()
+                }
+                # Dedup by (title, date, time) — catches tasks created via bot that are also in Calendar
+                existing_keys = {
+                    (row[0], row[1], row[2]) for row in
+                    db.execute("SELECT title, suggested_date, suggested_time FROM tasks WHERE chat_id=?", (chat_id,)).fetchall()
                 }
 
                 for event in cal_events:
                     event_id = event["id"]
-                    if event_id in existing:
+                    if event_id in existing_ids:
                         continue
                     title = event.get("summary", "—")
                     start = event.get("start", {})
@@ -1073,6 +1096,16 @@ async def sync_calendar_events():
                     else:
                         suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
                         suggested_time = None
+
+                    # If a task with same title+date+time already exists — just link it to Calendar, don't create duplicate
+                    task_key = (title, suggested_date, suggested_time)
+                    if task_key in existing_keys:
+                        db.execute(
+                            "UPDATE tasks SET google_event_id=?, synced_to_calendar=1 WHERE chat_id=? AND title=? AND suggested_date=? AND suggested_time IS ? AND google_event_id IS NULL",
+                            (event_id, chat_id, title, suggested_date, suggested_time)
+                        )
+                        db.commit()
+                        continue
 
                     db.execute(
                         "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id) VALUES (?,?,?,?,?,?,?,0,1,?)",
