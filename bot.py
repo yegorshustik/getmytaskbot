@@ -1362,8 +1362,10 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         lines = [header]
         for title, quadrant, time, is_done in by_date[date]:
             icon = "✅" if is_done else QUADRANT_EMOJI.get(quadrant, "⚪")
-            time_str = f"{time_sep}{time}" if time else ""
-            lines.append(f"{icon} {title}{time_str}")
+            if time:
+                lines.append(f"{time}  {icon} {title}")
+            else:
+                lines.append(f"{icon} {title}")
         blocks.append("\n".join(lines))
 
     text = t["tasks_header"] + "\n\n".join(blocks)
