@@ -423,6 +423,8 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "tasks_today": "Задачи на сегодня",
         "tasks_tomorrow": "Завтра",
+        "tasks_birthdays": "🎂 Дни рождения",
+        "tasks_allday": "📅 Весь день",
         "tasks_more_days": "...и ещё {n} {days}",
         "tasks_day": "день",
         "tasks_days_2_4": "дня",
@@ -547,6 +549,8 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "tasks_today": "Tasks for today",
         "tasks_tomorrow": "Tomorrow",
+        "tasks_birthdays": "🎂 Birthdays",
+        "tasks_allday": "📅 All day",
         "tasks_more_days": "...and {n} more {days}",
         "tasks_day": "day",
         "tasks_days_2_4": "days",
@@ -671,6 +675,8 @@ TEXTS = {
         "tasks_item": "{emoji} *{title}* — {date}\n",
         "tasks_today": "Задачі на сьогодні",
         "tasks_tomorrow": "Завтра",
+        "tasks_birthdays": "🎂 Дні народження",
+        "tasks_allday": "📅 Весь день",
         "tasks_more_days": "...і ще {n} {days}",
         "tasks_day": "день",
         "tasks_days_2_4": "дні",
@@ -1414,13 +1420,37 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         else:
             header = f"*{formatted}*"
 
-        lines = [header]
-        for title, quadrant, time, is_done in by_date[date]:
+        _birthday_kw = ("день рождения", "birthday", "народження", "день народження")
+        def _is_birthday(title): return any(kw in title.lower() for kw in _birthday_kw)
+
+        timed   = [(ti, q, tm, d) for ti, q, tm, d in by_date[date] if tm]
+        untimed = [(ti, q, tm, d) for ti, q, tm, d in by_date[date] if not tm]
+        birthdays = [x for x in untimed if _is_birthday(x[0])]
+        allday    = [x for x in untimed if not _is_birthday(x[0])]
+
+        lines = [header, ""]   # blank line after header
+        for title, quadrant, time, is_done in timed:
             icon = "✅" if is_done else QUADRANT_EMOJI.get(quadrant, "⚪")
-            if time:
-                lines.append(f"{time}  {icon} {title}")
-            else:
+            lines.append(f"{time}  {icon} {title}")
+
+        if birthdays:
+            lines.append("")
+            lines.append(f"*{t['tasks_birthdays']}:*")
+            for title, _, _, _ in birthdays:
+                # strip trailing "– день рождения" / "– birthday" etc.
+                clean = title
+                for suffix in (" – день рождения", " – birthday", " – день народження", "'s Birthday", "Birthday"):
+                    if clean.lower().endswith(suffix.lower()):
+                        clean = clean[:-len(suffix)].strip(" –")
+                lines.append(clean)
+
+        if allday:
+            lines.append("")
+            lines.append(f"*{t['tasks_allday']}:*")
+            for title, quadrant, _, is_done in allday:
+                icon = "✅" if is_done else QUADRANT_EMOJI.get(quadrant, "⚪")
                 lines.append(f"{icon} {title}")
+
         blocks.append("\n".join(lines))
 
     text = "\n\n".join(blocks)
