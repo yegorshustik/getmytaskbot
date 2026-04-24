@@ -4,6 +4,7 @@ import uuid
 import json
 import base64
 import hashlib
+import random
 import secrets
 import logging
 import sqlite3
@@ -480,7 +481,16 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Напоминание о задачах*\nСейчас: за {min} мин до начала",
         "reminder_before_set": "✅ Буду напоминать за {min} мин до задачи.",
         "task_reminder": "⏰ Напоминание: *{title}* начнётся в {time}",
-        "menu_hint": "Надиктуйте или опишите задачу:",
+        "menu_hint": [
+            "Надиктуйте или опишите задачу:",
+            "Что нужно сделать? Пишите или говорите 🎙",
+            "Есть событие, о котором не хотите забыть?",
+            "Создайте напоминание — голосом или текстом:",
+            "Что планируете? Расскажите — я запишу 📝",
+            "Новая задача? Просто скажите или напишите:",
+            "Что важного нельзя упустить сегодня?",
+            "Голосом за 10 секунд — надиктуйте задачу 🎙",
+        ],
         "reminder_ask": "⏰ За сколько минут напоминать о задачах?",
         "reminder_ask_set": "✅ Буду напоминать за {min} мин до задачи.",
     },
@@ -620,7 +630,16 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Task reminders*\nNow: {min} min before start",
         "reminder_before_set": "✅ Will remind {min} min before task.",
         "task_reminder": "⏰ Reminder: *{title}* starts at {time}",
-        "menu_hint": "Dictate or describe a task:",
+        "menu_hint": [
+            "Dictate or describe a task:",
+            "What needs to be done? Type or record a voice message 🎙",
+            "Any event you don't want to forget?",
+            "Create a reminder — just speak or type:",
+            "What are you planning? Tell me and I'll note it down 📝",
+            "New task? Just say it or type it:",
+            "What's important not to miss today?",
+            "10 seconds by voice — just dictate your task 🎙",
+        ],
         "reminder_ask": "⏰ How many minutes before a task should I remind you?",
         "reminder_ask_set": "✅ I'll remind you {min} min before each task.",
     },
@@ -760,11 +779,25 @@ TEXTS = {
         "reminder_before_settings": "⏰ *Нагадування про задачі*\nЗараз: за {min} хв до початку",
         "reminder_before_set": "✅ Нагадуватиму за {min} хв до задачі.",
         "task_reminder": "⏰ Нагадування: *{title}* починається о {time}",
-        "menu_hint": "Надиктуйте або опишіть задачу:",
+        "menu_hint": [
+            "Надиктуйте або опишіть задачу:",
+            "Що потрібно зробити? Пишіть або говоріть 🎙",
+            "Є подія, про яку не хочете забути?",
+            "Створіть нагадування — голосом або текстом:",
+            "Що плануєте? Розкажіть — я запишу 📝",
+            "Нова задача? Просто скажіть або напишіть:",
+            "Що важливого не можна пропустити сьогодні?",
+            "Голосом за 10 секунд — надиктуйте задачу 🎙",
+        ],
         "reminder_ask": "⏰ За скільки хвилин нагадувати про задачі?",
         "reminder_ask_set": "✅ Нагадуватиму за {min} хв до задачі.",
     },
 }
+
+def get_menu_hint(lang: str) -> str:
+    hints = TEXTS.get(lang, TEXTS["ru"]).get("menu_hint", [])
+    return random.choice(hints) if hints else "Надиктуйте или опишите задачу:"
+
 
 def get_active_task_count(chat_id):
     conn = sqlite3.connect("users.db")
@@ -1704,7 +1737,7 @@ async def handle_reschedule(update, context, text, chat_id, lang):
         await msg.edit_text(TEXTS[lang]["added"], reply_markup=added_markup)
         user = get_user(chat_id)
         await update.message.reply_text(
-            TEXTS[lang]["menu_hint"],
+            get_menu_hint(lang),
             reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
         )
     except Exception as e:
@@ -1744,7 +1777,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user and user["lang"]:
         lang = user["lang"]
         await update.message.reply_text(
-            TEXTS[lang]["menu_hint"],
+            get_menu_hint(lang),
             reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
         )
         return
