@@ -217,6 +217,7 @@ def init_db():
         ("reminder_minutes", "INTEGER DEFAULT 30"),
         ("pending_task_json", "TEXT DEFAULT NULL"),
         ("last_active", "TEXT DEFAULT NULL"),
+        ("ical_token", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -299,7 +300,7 @@ def get_user(chat_id):
 _ALLOWED_USER_COLS = {
     "lang", "calendar_token", "first_task_done", "calendar_connected",
     "timezone", "reminder_time", "reminder_enabled", "reminder_before",
-    "reminder_minutes", "pending_task_json", "last_active",
+    "reminder_minutes", "pending_task_json", "last_active", "ical_token",
 }
 
 def save_user(chat_id, **kwargs):
@@ -364,6 +365,13 @@ TEXTS = {
         "skip_calendar": "➡️ Пропустить",
         "connect_link": "🔗 Подключите Google Calendar:",
         "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать вам о задачах.",
+        "btn_apple_cal": "🍎 Apple Calendar",
+        "apple_cal_info": (
+            "🍎 *Подписка на Apple Calendar*\n\n"
+            "Нажми кнопку ниже — Apple Calendar откроется и предложит подписаться.\n\n"
+            "Все задачи из бота автоматически появятся в твоём календаре и будут обновляться каждый час."
+        ),
+        "btn_apple_cal_open": "🍎 Открыть в Apple Calendar",
         "btn_feedback": "✉️ Написать нам",
         "feedback_prompt": "✉️ Напишите ваше сообщение — текст или голосовое. Мы читаем каждое обращение.",
         "feedback_sent": "✅ Сообщение отправлено! Спасибо за обратную связь.",
@@ -481,6 +489,13 @@ TEXTS = {
         "skip_calendar": "➡️ Skip",
         "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
+        "btn_apple_cal": "🍎 Apple Calendar",
+        "apple_cal_info": (
+            "🍎 *Apple Calendar Subscription*\n\n"
+            "Tap the button below — Apple Calendar will open and offer to subscribe.\n\n"
+            "All your bot tasks will appear in your calendar and update every hour."
+        ),
+        "btn_apple_cal_open": "🍎 Open in Apple Calendar",
         "btn_feedback": "✉️ Contact us",
         "feedback_prompt": "✉️ Send us a message — text or voice. We read every submission.",
         "feedback_sent": "✅ Message sent! Thank you for your feedback.",
@@ -598,6 +613,13 @@ TEXTS = {
         "skip_calendar": "➡️ Пропустити",
         "connect_link": "🔗 Підключіть Google Calendar:",
         "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму вам про задачі.",
+        "btn_apple_cal": "🍎 Apple Calendar",
+        "apple_cal_info": (
+            "🍎 *Підписка на Apple Calendar*\n\n"
+            "Натисни кнопку нижче — Apple Calendar відкриється і запропонує підписатися.\n\n"
+            "Всі задачі з бота автоматично з'являться у твоєму календарі й оновлюватимуться щогодини."
+        ),
+        "btn_apple_cal_open": "🍎 Відкрити в Apple Calendar",
         "btn_feedback": "✉️ Написати нам",
         "feedback_prompt": "✉️ Напишіть ваше повідомлення — текст або голосове. Ми читаємо кожне звернення.",
         "feedback_sent": "✅ Повідомлення надіслано! Дякуємо за зворотній зв'язок.",
@@ -1847,6 +1869,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["reminder_off"])
         return
+    if data == "settings_apple_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        user = get_user(chat_id)
+        token = user.get("ical_token") if user else None
+        if not token:
+            token = secrets.token_urlsafe(24)
+            save_user(chat_id, ical_token=token)
+        base = BASE_URL.replace("https://", "").replace("http://", "")
+        webcal_url = f"webcal://{base}/ical/{token}"
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_apple_cal_open"], url=webcal_url)
+        ]])
+        await query.message.reply_text(
+            t["apple_cal_info"], parse_mode="Markdown", reply_markup=keyboard
+        )
+        return
     if data == "settings_archive":
         await query.edit_message_reply_markup(reply_markup=None)
         user = get_user(chat_id)
@@ -2391,6 +2429,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
     else:
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
+    keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
     keyboard_rows.append([
@@ -2894,10 +2933,81 @@ async def health_check(request):
     except Exception as e:
         return web.json_response({"status": "error", "detail": str(e)}, status=500)
 
+async def ical_feed(request):
+    """Personal iCal subscription feed: /ical/{token}"""
+    token = request.match_info.get("token", "")
+    with sqlite3.connect("users.db") as db:
+        row = db.execute(
+            "SELECT chat_id, timezone FROM users WHERE ical_token=?", (token,)
+        ).fetchone()
+    if not row:
+        return web.Response(text="Not found", status=404)
+    chat_id, tz_name = row
+    tz_name = tz_name or "Europe/Moscow"
+    tz = ZoneInfo(tz_name)
+
+    with sqlite3.connect("users.db") as db:
+        tasks = db.execute(
+            """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
+               WHERE chat_id=? AND done=0 AND suggested_date >= date('now', '-1 day')
+               ORDER BY suggested_date, suggested_time""",
+            (chat_id,)
+        ).fetchall()
+
+    now_utc = datetime.now(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Get My Task//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Get My Task",
+        f"X-WR-TIMEZONE:{tz_name}",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+        "X-PUBLISHED-TTL:PT1H",
+    ]
+    for title, quadrant, date, time in tasks:
+        uid = f"gmt-{chat_id}-{date}-{title.replace(' ', '')}@getmytask"
+        safe_title = title.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+        if time:
+            dt_start = datetime.fromisoformat(f"{date}T{time}:00").replace(tzinfo=tz)
+            dt_end = dt_start + timedelta(hours=1)
+            dtstart = dt_start.astimezone(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
+            dtend = dt_end.astimezone(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:{uid}",
+                f"DTSTAMP:{now_utc}",
+                f"DTSTART:{dtstart}",
+                f"DTEND:{dtend}",
+                f"SUMMARY:{safe_title}",
+                "END:VEVENT",
+            ]
+        else:
+            date_compact = date.replace("-", "")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:{uid}",
+                f"DTSTAMP:{now_utc}",
+                f"DTSTART;VALUE=DATE:{date_compact}",
+                f"DTEND;VALUE=DATE:{date_compact}",
+                f"SUMMARY:{safe_title}",
+                "END:VEVENT",
+            ]
+    lines.append("END:VCALENDAR")
+    ics_content = "\r\n".join(lines) + "\r\n"
+    return web.Response(
+        text=ics_content,
+        content_type="text/calendar",
+        charset="utf-8",
+        headers={"Content-Disposition": 'attachment; filename="getmytask.ics"'}
+    )
+
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", home_page)
     app.router.add_get("/health", health_check)
+    app.router.add_get("/ical/{token}", ical_feed)
     app.router.add_get("/stats", stats_page)
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
