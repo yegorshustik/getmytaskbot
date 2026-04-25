@@ -1542,23 +1542,64 @@ async def send_morning_digests():
             mark_reminder_sent(chat_id, _MORNING_DIGEST_EVENT_ID, today)
             lang = lang or "ru"
             t = TEXTS[lang]
-            # Digest: only tasks WITHOUT time (timed tasks get their own reminder)
+            tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            _birthday_kw = ("день рождения", "birthday", "народження", "день народження")
+            def _is_bday(title): return any(kw in title.lower() for kw in _birthday_kw)
+            def _strip_bday(title):
+                for suffix in (" – день рождения", " – birthday", " – день народження", "'s Birthday"):
+                    if title.lower().endswith(suffix.lower()):
+                        return title[:-len(suffix)].strip(" –")
+                return title
+
             db = sqlite3.connect("users.db")
+            # All tasks today (timed + untimed)
             today_rows = db.execute(
-                "SELECT title, task_url FROM tasks WHERE chat_id=? AND suggested_date=? AND (suggested_time IS NULL OR suggested_time='') ORDER BY id ASC",
+                "SELECT title, suggested_time, task_url FROM tasks WHERE chat_id=? AND suggested_date=? ORDER BY suggested_time ASC NULLS LAST, id ASC",
                 (chat_id, today)
             ).fetchall()
+            # Future tasks (next 7 days, untimed only — timed ones get separate reminders)
             future_rows = db.execute(
-                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 5",
-                (chat_id, today)
+                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND suggested_date<=date(?,'+7 days') AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 7",
+                (chat_id, today, today)
             ).fetchall() if not today_rows else []
             db.close()
+
+            def _build_digest_block(rows_today, rows_future):
+                """Return formatted digest body with separate birthday / task sections."""
+                lines = []
+                if rows_today:
+                    bdays   = [(ti, tm, u) for ti, tm, u in rows_today if _is_bday(ti)]
+                    regular = [(ti, tm, u) for ti, tm, u in rows_today if not _is_bday(ti)]
+                    if regular:
+                        for title, timed, url in regular:
+                            prefix = f"{timed}  " if timed else ""
+                            lines.append(f"• {prefix}{fmt_title(title, url)}")
+                    if bdays:
+                        lines.append("")
+                        lines.append(f"🎂 *{t['tasks_birthdays']}:*")
+                        for title, _, _ in bdays:
+                            lines.append(f"• {_strip_bday(title)}")
+                else:
+                    bdays_f   = [(ti, d, u) for ti, d, u in rows_future if _is_bday(ti)]
+                    regular_f = [(ti, d, u) for ti, d, u in rows_future if not _is_bday(ti)]
+                    if regular_f:
+                        for title, date, url in regular_f:
+                            rel = format_date_relative(date, today, tomorrow, lang)
+                            lines.append(f"• {fmt_title(title, url)} — {rel}")
+                    if bdays_f:
+                        lines.append("")
+                        lines.append(f"🎂 *{t['tasks_birthdays']}:*")
+                        for title, date, _ in bdays_f:
+                            rel = format_date_relative(date, today, tomorrow, lang)
+                            lines.append(f"• {_strip_bday(title)} — {rel}")
+                return "\n".join(lines)
+
             if today_rows:
-                task_lines = "".join(f"• {fmt_title(title, url)}\n" for title, url in today_rows)
-                text = t["morning_digest"].format(tasks=task_lines)
+                body = _build_digest_block(today_rows, [])
+                text = t["morning_digest"].format(tasks=body)
             elif future_rows:
-                task_lines = "".join(f"• {fmt_title(title, url)} — {format_date(date, lang)}\n" for title, date, url in future_rows)
-                text = t["morning_digest_future"].format(tasks=task_lines)
+                body = _build_digest_block([], future_rows)
+                text = t["morning_digest_future"].format(tasks=body)
             else:
                 text = t["morning_digest_empty"]
             # First reminder offer
@@ -1725,6 +1766,28 @@ def format_date(date_str: str, lang: str) -> str:
         return f"{d.day} {months[d.month - 1]} {d.year}"
     except Exception:
         return date_str
+
+def format_date_relative(date_str: str, today_str: str, tomorrow_str: str, lang: str) -> str:
+    """Return 'сегодня'/'завтра'/'послезавтра' when close, full date otherwise."""
+    _REL = {
+        "ru": {"today": "сегодня", "tomorrow": "завтра", "day_after": "послезавтра"},
+        "en": {"today": "today",   "tomorrow": "tomorrow", "day_after": "in 2 days"},
+        "uk": {"today": "сьогодні","tomorrow": "завтра",   "day_after": "післязавтра"},
+    }
+    rel = _REL.get(lang, _REL["ru"])
+    try:
+        d = _date.fromisoformat(date_str)
+        today = _date.fromisoformat(today_str)
+        diff = (d - today).days
+        if diff == 0:
+            return rel["today"]
+        if diff == 1:
+            return rel["tomorrow"]
+        if diff == 2:
+            return rel["day_after"]
+    except Exception:
+        pass
+    return format_date(date_str, lang)
 
 def _days_word(n: int, lang: str, t: dict) -> str:
     """Russian/Ukrainian declension for N days."""
