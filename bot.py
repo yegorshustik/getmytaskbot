@@ -3462,10 +3462,7 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_tasks_grouped(update, chat_id, lang)
 
 async def mytasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = get_user(chat_id)
-    lang = user["lang"] if user else "ru"
-    await _send_tasks_grouped(update, chat_id, lang)
+    await tasks_command(update, context)
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -4148,7 +4145,6 @@ async def main():
     await bot_app.bot.set_my_commands([
         BotCommand("start", "🏠 Главное меню"),
         BotCommand("tasks", "📋 Мои задачи"),
-        BotCommand("mytasks", "📋 Последние задачи"),
         BotCommand("settings", "⚙️ Настройки"),
         BotCommand("timezone", "🕐 Таймзона"),
         BotCommand("connect", "📅 Подключить Calendar"),
