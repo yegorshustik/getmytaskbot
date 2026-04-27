@@ -2087,7 +2087,7 @@ async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
     # ── Goal rename intent ────────────────────────────────────────────────────
-    if await is_goal_rename_intent(text, lang):
+    if is_goal_rename_intent(text, lang):
         await update.message.reply_text(TEXTS[lang]["goal_rename_hint"], parse_mode="Markdown")
         return
     # ── Goal detection ────────────────────────────────────────────────────────
@@ -3322,34 +3322,21 @@ def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
 
-async def is_goal_rename_intent(text: str, lang: str) -> bool:
-    """Return True if the user is asking to rename/change the name of a goal."""
-    prompts = {
-        "ru": (
-            f"Пользователь написал: «{text}»\n"
-            "Он хочет изменить/переименовать название цели (не задачи)?\n"
-            'Ответь ТОЛЬКО JSON: {"rename_goal": true} или {"rename_goal": false}'
-        ),
-        "en": (
-            f"The user wrote: '{text}'\n"
-            "Are they trying to rename/change the name of a goal (not a task)?\n"
-            'Answer ONLY JSON: {"rename_goal": true} or {"rename_goal": false}'
-        ),
-        "uk": (
-            f"Користувач написав: «{text}»\n"
-            "Він хоче змінити/перейменувати назву цілі (не задачі)?\n"
-            'Відповідай ТІЛЬКИ JSON: {"rename_goal": true} або {"rename_goal": false}'
-        ),
-    }
-    try:
-        resp = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
-            max_tokens=20, temperature=0,
-        )
-        return json.loads(resp.choices[0].message.content.strip()).get("rename_goal", False)
-    except Exception:
-        return False
+def is_goal_rename_intent(text: str, lang: str) -> bool:
+    """Return True if the user explicitly wants to rename/change the name of a goal."""
+    t = text.lower().strip()
+    keywords = [
+        # ru
+        "переименуй цель", "переименовать цель", "измени название цели",
+        "смени название цели", "изменить название цели", "тзмени название цели",
+        "поменяй название цели", "поменять название цели",
+        # en
+        "rename goal", "rename the goal", "change goal name", "change the goal name",
+        # uk
+        "перейменуй ціль", "перейменувати ціль", "змін назву цілі",
+        "змінити назву цілі", "поміняй назву цілі",
+    ]
+    return any(kw in t for kw in keywords)
 
 async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
     """

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from bot import (
     _progress_bar,
     _task_matches_goal,
+    is_goal_rename_intent,
     format_date,
     format_date_relative,
     adjust_task_to_future,
@@ -187,3 +188,35 @@ class TestFmtTitle:
     def test_no_bold(self):
         result = fmt_title("Задача", None, bold=False)
         assert result == "Задача"
+
+
+# ─── is_goal_rename_intent ────────────────────────────────────────────────────
+
+class TestIsGoalRenameIntent:
+    def test_explicit_rename_ru(self):
+        assert is_goal_rename_intent("переименуй цель", "ru") is True
+
+    def test_explicit_change_name_ru(self):
+        assert is_goal_rename_intent("измени название цели", "ru") is True
+
+    def test_typo_variant(self):
+        assert is_goal_rename_intent("тзмени название цели", "ru") is True
+
+    def test_explicit_rename_en(self):
+        assert is_goal_rename_intent("rename the goal", "en") is True
+
+    def test_explicit_rename_uk(self):
+        assert is_goal_rename_intent("перейменуй ціль", "uk") is True
+
+    # Негативные — не должны срабатывать
+    def test_regular_task_ru(self):
+        assert is_goal_rename_intent("поесть в 18:30", "ru") is False
+
+    def test_voice_task_ru(self):
+        assert is_goal_rename_intent("в 7 часов закончите ужин", "ru") is False
+
+    def test_create_goal_not_rename(self):
+        assert is_goal_rename_intent("хочу запустить бизнес", "ru") is False
+
+    def test_partial_word_no_match(self):
+        assert is_goal_rename_intent("цель достигнута", "ru") is False
