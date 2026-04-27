@@ -502,6 +502,14 @@ TEXTS = {
         ),
         "btn_goal_yes": "🎯 Да, создать цель",
         "btn_goal_no": "📝 Сохранить как задачу",
+        "goal_onboarding": (
+            "🎯 *Как создать цель*\n\n"
+            "Хорошая цель — это три составляющих:\n\n"
+            "• *Что:* конкретный результат — _«запустить онлайн-курс»_\n"
+            "• *Когда:* реальный дедлайн — _«до 1 сентября»_\n"
+            "• *Критерий:* как поймёшь, что достиг — _«первые 10 оплат»_\n\n"
+            "_Я задам уточняющие вопросы_ 👇"
+        ),
         "goal_ask_deadline": (
             "📅 Отлично, начинаем!\n\n"
             "К какому сроку хочешь достичь этой цели?\n\n"
@@ -542,6 +550,7 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Цель удалена вместе с задачами ({n} шт.).",
         "goal_deleted_tasks_kept": "🗑 Цель удалена. {n} задач(и) откреплены и остались в списке.",
         "goal_deleted_no_tasks": "🗑 Цель удалена.",
+        "goal_rename_hint": "✏️ Переименовать цель напрямую нельзя.\n\nУдали её через раздел *Цели* и создай новую с нужным названием.",
         "ask_when": "📅 Когда планируешь это сделать?\n\nНапример: *сегодня в 17:00*, *завтра в 10:00*, *25 апреля*",
         "ask_when_unclear": "🤔 Не понял дату. Попробуй написать, например: *завтра в 15:00* или *25 апреля в 9:00*",
         "btn_goals": "🎯 Цели",
@@ -700,6 +709,14 @@ TEXTS = {
         ),
         "btn_goal_yes": "🎯 Yes, create a goal",
         "btn_goal_no": "📝 Save as a task",
+        "goal_onboarding": (
+            "🎯 *How to create a goal*\n\n"
+            "A good goal has three parts:\n\n"
+            "• *What:* a specific result — _'launch an online course'_\n"
+            "• *When:* a real deadline — _'by September 1st'_\n"
+            "• *Criterion:* how you'll know you made it — _'first 10 payments'_\n\n"
+            "_I'll ask you a couple of questions_ 👇"
+        ),
         "goal_ask_deadline": (
             "📅 Great, let's go!\n\n"
             "By when do you want to achieve this goal?\n\n"
@@ -740,6 +757,7 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Goal deleted along with {n} task(s).",
         "goal_deleted_tasks_kept": "🗑 Goal deleted. {n} task(s) unlinked and kept in your list.",
         "goal_deleted_no_tasks": "🗑 Goal deleted.",
+        "goal_rename_hint": "✏️ Renaming a goal directly isn't supported.\n\nDelete it via *Goals* and create a new one with the desired name.",
         "ask_when": "📅 When do you plan to do this?\n\nFor example: *today at 5pm*, *tomorrow at 10am*, *April 25*",
         "ask_when_unclear": "🤔 Couldn't understand the date. Try something like: *tomorrow at 3pm* or *April 25 at 9am*",
         "btn_goals": "🎯 Goals",
@@ -899,6 +917,14 @@ TEXTS = {
         ),
         "btn_goal_yes": "🎯 Так, створити ціль",
         "btn_goal_no": "📝 Зберегти як задачу",
+        "goal_onboarding": (
+            "🎯 *Як створити ціль*\n\n"
+            "Хороша ціль — це три складові:\n\n"
+            "• *Що:* конкретний результат — _«запустити онлайн-курс»_\n"
+            "• *Коли:* реальний дедлайн — _«до 1 вересня»_\n"
+            "• *Критерій:* як зрозумієш, що досяг — _«перші 10 оплат»_\n\n"
+            "_Я поставлю уточнюючі запитання_ 👇"
+        ),
         "goal_ask_deadline": (
             "📅 Чудово, починаємо!\n\n"
             "До якого терміну хочеш досягти цієї цілі?\n\n"
@@ -939,6 +965,7 @@ TEXTS = {
         "goal_deleted_with_tasks": "🗑 Ціль видалена разом із задачами ({n} шт.).",
         "goal_deleted_tasks_kept": "🗑 Ціль видалена. {n} задач(і) від'єднані і залишились у списку.",
         "goal_deleted_no_tasks": "🗑 Ціль видалена.",
+        "goal_rename_hint": "✏️ Перейменувати ціль напряму не можна.\n\nВидали її через розділ *Цілі* і створи нову з потрібною назвою.",
         "ask_when": "📅 Коли плануєш це зробити?\n\nНаприклад: *сьогодні о 17:00*, *завтра о 10:00*, *25 квітня*",
         "ask_when_unclear": "🤔 Не зрозумів дату. Спробуй написати, наприклад: *завтра о 15:00* або *25 квітня о 9:00*",
         "btn_goals": "🎯 Цілі",
@@ -2056,6 +2083,10 @@ async def process_and_show_from_callback(query, context, text, chat_id, lang):
 async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
+    # ── Goal rename intent ────────────────────────────────────────────────────
+    if await is_goal_rename_intent(text, lang):
+        await update.message.reply_text(TEXTS[lang]["goal_rename_hint"], parse_mode="Markdown")
+        return
     # ── Goal detection ────────────────────────────────────────────────────────
     goal_info = await classify_goal_or_task(text, lang, tz_name)
     if goal_info.get("is_goal"):
@@ -2479,6 +2510,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         draft = context.user_data.get("goal_draft", {})
         await query.edit_message_reply_markup(reply_markup=None)
         # Skip questions for info already present in the original message
+        if draft.get("deadline") and draft.get("criteria"):
+            pass  # goal created immediately below, no questions needed
+        else:
+            await query.message.reply_text(t["goal_onboarding"], parse_mode="Markdown")
         if draft.get("deadline") and draft.get("criteria"):
             # Have everything — create goal immediately
             context.user_data.pop("goal_draft", None)
@@ -3260,6 +3295,35 @@ def get_goal_progress(goal_id: int) -> tuple[int, int]:
 def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
+
+async def is_goal_rename_intent(text: str, lang: str) -> bool:
+    """Return True if the user is asking to rename/change the name of a goal."""
+    prompts = {
+        "ru": (
+            f"Пользователь написал: «{text}»\n"
+            "Он хочет изменить/переименовать название цели (не задачи)?\n"
+            'Ответь ТОЛЬКО JSON: {"rename_goal": true} или {"rename_goal": false}'
+        ),
+        "en": (
+            f"The user wrote: '{text}'\n"
+            "Are they trying to rename/change the name of a goal (not a task)?\n"
+            'Answer ONLY JSON: {"rename_goal": true} or {"rename_goal": false}'
+        ),
+        "uk": (
+            f"Користувач написав: «{text}»\n"
+            "Він хоче змінити/перейменувати назву цілі (не задачі)?\n"
+            'Відповідай ТІЛЬКИ JSON: {"rename_goal": true} або {"rename_goal": false}'
+        ),
+    }
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
+            max_tokens=20, temperature=0,
+        )
+        return json.loads(resp.choices[0].message.content.strip()).get("rename_goal", False)
+    except Exception:
+        return False
 
 async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
     """
