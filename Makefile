@@ -2,6 +2,13 @@ SERVER=ubuntu@92.5.42.221
 SSH_KEY=~/Downloads/ssh-key-2026-04-22.key
 APP_DIR=/home/ubuntu/getmytaskbot
 
+test:
+	python3 -m pytest tests/ -v
+
+hooks:
+	git config core.hooksPath .githooks
+	@echo "✅ Pre-commit hook активирован"
+
 deploy:
 	git push
 	ssh -i $(SSH_KEY) $(SERVER) "cd $(APP_DIR) && git pull && sudo systemctl restart taskbot"
