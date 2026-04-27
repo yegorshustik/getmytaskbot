@@ -1021,11 +1021,13 @@ def get_active_task_count(chat_id):
     conn.close()
     return count
 
-def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0) -> ReplyKeyboardMarkup:
+def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0, chat_id: int = 0) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
     tasks_label = t["btn_my_tasks"] + (f" ({task_count})" if task_count > 0 else "")
-    row1 = [KeyboardButton(tasks_label), KeyboardButton(t["btn_settings"])]
-    return ReplyKeyboardMarkup([row1], resize_keyboard=True)
+    rows = [[KeyboardButton(tasks_label), KeyboardButton(t["btn_settings"])]]
+    if chat_id == BOT_OWNER_ID:
+        rows.append([KeyboardButton("⚙️ Admin")])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     now = datetime.now(ZoneInfo(tz_name))
@@ -2052,7 +2054,7 @@ async def handle_reschedule(update, context, text, chat_id, lang):
         user = get_user(chat_id)
         await update.message.reply_text(
             get_menu_hint(lang),
-            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
+            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id), chat_id)
         )
     except Exception as e:
         await update.message.reply_text(TEXTS[lang]["error"] + str(e))
@@ -2143,7 +2145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = user["lang"]
         await update.message.reply_text(
             get_menu_hint(lang),
-            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id))
+            reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id), chat_id)
         )
         return
     # Auto-detect language from Telegram settings
@@ -2229,7 +2231,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 updated_user = get_user(chat_id)
                 await update.message.reply_text(
                     TEXTS[lang]["lang_set"],
-                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
                 )
         except (ZoneInfoNotFoundError, KeyError):
             await update.message.reply_text(TEXTS[lang]["timezone_invalid"], parse_mode="Markdown")
@@ -2249,6 +2251,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_text == t["btn_connect"]:
         await connect_command(update, context)
+        return
+    if user_text == "⚙️ Admin" and chat_id == BOT_OWNER_ID:
+        await stats_command(update, context)
         return
     # ── "When?" follow-up for tasks without date ─────────────────────────────
     pending_when = context.user_data.get("pending_when_indices")
@@ -2502,7 +2507,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.message.reply_text(
                 TEXTS[lang]["lang_set"],
-                reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+                reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
             )
         return
     if data == "goal_confirm_yes":
@@ -2780,7 +2785,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = get_user(chat_id)
         await query.message.reply_text(
             TEXTS[lang]["calendar_disconnected"],
-            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id))
+            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id), chat_id)
         )
         return
     if data == "skip_calendar":
@@ -2805,7 +2810,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 updated_user = get_user(chat_id)
                 await query.message.reply_text(
                     TEXTS[lang]["lang_set"],
-                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id))
+                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
                 )
         return
     if data.startswith("ics_"):
@@ -3174,18 +3179,30 @@ def get_stats_data(days=7):
             ).fetchone()[0]
             label = (now - timedelta(days=i)).strftime("%d.%m")
             chart_data.append((label, cnt))
+    reminders_off = conn.execute(
+        "SELECT chat_id FROM users WHERE reminder_enabled=0 AND lang IS NOT NULL"
+    ).fetchall()
+    reminders_off_ids = [row[0] for row in reminders_off]
     conn.close()
     return dict(total_users=total_users, cal_users=cal_users, dau=dau,
                 active=active, new_users=new_users, tasks_total=tasks_total,
                 voice_total=voice_total, text_total=text_total,
                 cal_connects=cal_connects, chart_data=chart_data,
-                use_monthly=use_monthly, days=days)
+                use_monthly=use_monthly, days=days,
+                reminders_off_ids=reminders_off_ids)
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if chat_id != BOT_OWNER_ID:
         return
     s = get_stats_data()
+    # Build reminders-off list
+    off_ids = s.get("reminders_off_ids", [])
+    if off_ids:
+        off_lines = "\n".join(f"  • `{uid}`" for uid in off_ids)
+        reminders_off_block = f"\n*🔕 Отключили уведомления ({len(off_ids)}):*\n{off_lines}"
+    else:
+        reminders_off_block = "\n*🔕 Отключили уведомления:* нет"
     text = (
         "📊 *Статистика Get My Task*\n\n"
         f"👥 Всего пользователей: *{s['total_users']}*\n"
@@ -3203,6 +3220,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*Голосовые:*\n"
         f"• Сегодня: *{s['voice_today']}*\n"
         f"• За 7 дней: *{s['voice_week']}*"
+        + reminders_off_block
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -3591,7 +3609,7 @@ async def oauth_callback(request):
     await bot_app.bot.send_message(
         chat_id=chat_id,
         text=TEXTS[lang]["calendar_connected"],
-        reply_markup=main_menu_keyboard(lang, calendar_connected=True, task_count=get_active_task_count(chat_id))
+        reply_markup=main_menu_keyboard(lang, calendar_connected=True, task_count=get_active_task_count(chat_id), chat_id=chat_id)
     )
     # Restore pending tasks if user connected calendar from a task card
     pending_json = user.get("pending_task_json") if user else None
