@@ -4250,14 +4250,15 @@ async def main():
     await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
     print("Бот запущен...")
     # Notify owner that bot started successfully
+    await asyncio.sleep(2)
     try:
         await bot_app.bot.send_message(
             chat_id=BOT_OWNER_ID,
             text="✅ *Get My Task Bot* запущен",
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to send startup notification to owner: {e}")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
