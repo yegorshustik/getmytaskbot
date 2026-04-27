@@ -2093,17 +2093,24 @@ async def process_and_show(update, context, text, chat_id, lang):
     # ── Goal detection ────────────────────────────────────────────────────────
     goal_info = await classify_goal_or_task(text, lang, tz_name)
     if goal_info.get("is_goal"):
-        context.user_data["goal_draft"] = {
+        draft = {
             "title": text[:200],
             "deadline": goal_info.get("deadline"),
             "criteria": goal_info.get("criteria"),
         }
+        context.user_data["goal_draft"] = draft
         t = TEXTS[lang]
+        # Build preview of what was extracted
+        preview_lines = [t["goal_detected"], ""]
+        if draft["deadline"]:
+            preview_lines.append(f"📅 {t.get('goal_deadline_label', 'Дедлайн:').rstrip(':')} {format_date(draft['deadline'], lang)}")
+        if draft["criteria"]:
+            preview_lines.append(f"✅ {draft['criteria']}")
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t["btn_goal_yes"], callback_data="goal_confirm_yes"),
             InlineKeyboardButton(t["btn_goal_no"],  callback_data="goal_confirm_no"),
         ]])
-        await update.message.reply_text(t["goal_detected"], parse_mode="Markdown", reply_markup=keyboard)
+        await update.message.reply_text("\n".join(preview_lines), parse_mode="Markdown", reply_markup=keyboard)
         return
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
@@ -3353,31 +3360,37 @@ async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Mos
     prompts = {
         "ru": (
             f"Сегодня {today}. Проанализируй текст и ответь на вопросы:\n"
-            "1. Это ЦЕЛЬ (намерение, желание достичь чего-то масштабного) или ЗАДАЧА (конкретное действие)?\n"
-            "   Цель: «хочу похудеть», «планирую запустить бизнес», «хочу выучить язык»\n"
-            "   Задача: «позвонить врачу», «купить молоко», «встреча в 15:00»\n"
-            "2. Если это цель — есть ли в тексте дедлайн? Если да — верни дату в формате YYYY-MM-DD.\n"
-            "3. Если это цель — есть ли в тексте конкретный критерий успеха (измеримый результат)?\n"
+            "1. Это ЦЕЛЬ или ЗАДАЧА?\n"
+            "   ЦЕЛЬ — долгосрочное намерение (недели/месяцы): «хочу похудеть», «запустить бизнес», «выучить язык», «заработать 100к».\n"
+            "   ЗАДАЧА — конкретное одноразовое действие: «позвонить врачу», «купить молоко», «встреча в 15:00», «пойти на обед», «написать письмо».\n"
+            "   Встречи, обеды, звонки, поездки — это ВСЕГДА задачи, не цели.\n"
+            "   Если сомневаешься — это ЗАДАЧА.\n"
+            "2. Если это цель — есть ли в тексте явный дедлайн (конкретная дата или период)? Если да — верни YYYY-MM-DD. Не угадывай дату если её нет.\n"
+            "3. Если это цель — есть ли явный критерий успеха?\n"
             f"Текст: «{text}»\n"
             'Ответь ТОЛЬКО JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" или null, "criteria": "текст" или null}'
         ),
         "en": (
             f"Today is {today}. Analyze the text and answer:\n"
-            "1. Is this a GOAL (aspiration, desire to achieve something big) or a TASK (specific one-time action)?\n"
-            "   Goal: 'I want to lose weight', 'planning to start a business', 'want to learn a language'\n"
-            "   Task: 'call the doctor', 'buy milk', 'meeting at 3pm'\n"
-            "2. If it's a goal — is there a deadline mentioned? If yes, return date as YYYY-MM-DD.\n"
-            "3. If it's a goal — is there a specific measurable success criterion?\n"
+            "1. Is this a GOAL or a TASK?\n"
+            "   GOAL — long-term aspiration (weeks/months): 'lose weight', 'start a business', 'learn a language', 'earn 100k'.\n"
+            "   TASK — a specific one-time action: 'call the doctor', 'buy milk', 'meeting at 3pm', 'go to lunch', 'send an email'.\n"
+            "   Meetings, lunches, calls, trips — always TASKS, never goals.\n"
+            "   When in doubt — it's a TASK.\n"
+            "2. If it's a goal — is there an explicit deadline in the text? Return YYYY-MM-DD. Do not guess if there's no date.\n"
+            "3. If it's a goal — is there an explicit success criterion?\n"
             f"Text: '{text}'\n"
             'Answer ONLY JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" or null, "criteria": "text" or null}'
         ),
         "uk": (
             f"Сьогодні {today}. Проаналізуй текст і дай відповідь:\n"
-            "1. Це ЦІЛЬ (намір, бажання досягти чогось масштабного) чи ЗАДАЧА (конкретна одноразова дія)?\n"
-            "   Ціль: «хочу схуднути», «планую запустити бізнес», «хочу вивчити мову»\n"
-            "   Задача: «зателефонувати лікарю», «купити молоко», «зустріч о 15:00»\n"
-            "2. Якщо це ціль — чи є в тексті дедлайн? Якщо так — поверни дату у форматі YYYY-MM-DD.\n"
-            "3. Якщо це ціль — чи є конкретний вимірюваний критерій успіху?\n"
+            "1. Це ЦІЛЬ чи ЗАДАЧА?\n"
+            "   ЦІЛЬ — довгострокове намірення (тижні/місяці): «хочу схуднути», «запустити бізнес», «вивчити мову».\n"
+            "   ЗАДАЧА — конкретна одноразова дія: «зателефонувати лікарю», «купити молоко», «зустріч о 15:00», «піти на обід».\n"
+            "   Зустрічі, обіди, дзвінки, поїздки — це ЗАВЖДИ задачі.\n"
+            "   Якщо сумніваєшся — це ЗАДАЧА.\n"
+            "2. Якщо це ціль — чи є явний дедлайн? Поверни YYYY-MM-DD. Не вигадуй дату якщо її немає.\n"
+            "3. Якщо це ціль — чи є явний критерій успіху?\n"
             f"Текст: «{text}»\n"
             'Відповідай ТІЛЬКИ JSON: {"is_goal": true/false, "deadline": "YYYY-MM-DD" або null, "criteria": "текст" або null}'
         ),
