@@ -1868,39 +1868,31 @@ async def send_archive_page(query, chat_id: int, lang: str, page: int = 0):
 
     await query.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = update.effective_chat.id
-    user = get_user(chat_id)
-    lang = user["lang"] if user else "ru"
-    data = query.data
-    if data.startswith("lang_"):
-        lang = data.split("_")[1]
-        save_user(chat_id, lang=lang)
-        log_event(chat_id, "new_user")
-        await query.edit_message_reply_markup(reply_markup=None)
-        updated_user = get_user(chat_id)
-        # If this is a new user (no timezone set yet), ask for timezone before showing menu
-        if not updated_user or updated_user.get("timezone") == "Europe/Moscow":
-            await show_timezone_menu(query.message, chat_id, lang, onboarding=True)
-        else:
-            await query.message.reply_text(
-                TEXTS[lang]["lang_set"],
-                reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
-            )
-        return
+# ── Callback sub-handlers ─────────────────────────────────────────────────────
+
+async def _cb_lang(query, context, data: str, chat_id: int, lang: str):
+    lang = data.split("_")[1]
+    save_user(chat_id, lang=lang)
+    log_event(chat_id, "new_user")
+    await query.edit_message_reply_markup(reply_markup=None)
+    updated_user = get_user(chat_id)
+    if not updated_user or updated_user.get("timezone") == "Europe/Moscow":
+        await show_timezone_menu(query.message, chat_id, lang, onboarding=True)
+    else:
+        await query.message.reply_text(
+            TEXTS[lang]["lang_set"],
+            reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
+        )
+
+
+async def _cb_goal(query, context, data: str, chat_id: int, lang: str):
+    t = TEXTS[lang]
     if data == "goal_confirm_yes":
-        t = TEXTS[lang]
         draft = context.user_data.get("goal_draft", {})
         await query.edit_message_reply_markup(reply_markup=None)
-        # Skip questions for info already present in the original message
-        if draft.get("deadline") and draft.get("criteria"):
-            pass  # goal created immediately below, no questions needed
-        else:
+        if not (draft.get("deadline") and draft.get("criteria")):
             await query.message.reply_text(t["goal_onboarding"], parse_mode="Markdown")
         if draft.get("deadline") and draft.get("criteria"):
-            # Have everything — create goal immediately
             context.user_data.pop("goal_draft", None)
             save_goal_to_db(chat_id, draft["title"], draft["criteria"], draft["deadline"])
             await query.message.reply_text(
@@ -1911,11 +1903,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ), parse_mode="Markdown"
             )
         elif draft.get("deadline"):
-            # Have deadline, only need criteria
             context.user_data["goal_creation_step"] = "criteria"
             await query.message.reply_text(t["goal_ask_criteria"], parse_mode="Markdown")
         else:
-            # Need deadline (and maybe criteria after)
             context.user_data["goal_creation_step"] = "deadline"
             await query.message.reply_text(t["goal_ask_deadline"], parse_mode="Markdown")
         return
@@ -1933,12 +1923,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if task_idx < len(tasks):
             task = tasks[task_idx]
             task["goal_id"] = goal_id
-            # UPDATE the already-saved row instead of inserting a duplicate
             saved_task_id = context.user_data.get("saved_task_ids", {}).get(task_idx)
             if saved_task_id:
                 link_task_to_goal(saved_task_id, goal_id)
             else:
-                save_task_to_db(chat_id, task)  # fallback: task wasn't tracked
+                save_task_to_db(chat_id, task)
             goals = get_active_goals(chat_id)
             goal_title = next((g["title"] for g in goals if g["id"] == goal_id), "")
             await query.edit_message_text(
@@ -1949,17 +1938,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_idx = int(data.split("_")[3])
         tasks = context.user_data.get("tasks", [])
         if task_idx < len(tasks):
-            # Task already saved, card already shown — just remove the link-offer message
             try:
                 await query.message.delete()
             except Exception:
                 await query.edit_message_reply_markup(reply_markup=None)
         return
-    # ── Goal delete flow ──────────────────────────────────────────────────────
-    if data.startswith("gdel_") and not any(data.startswith(p) for p in ("gdel_tasks_", "gdel_keep_", "gdel_cancel_")):
+
+
+async def _cb_goal_delete(query, context, data: str, chat_id: int, lang: str):
+    t = TEXTS[lang]
+    if not any(data.startswith(p) for p in ("gdel_tasks_", "gdel_keep_", "gdel_cancel_")):
         goal_id = int(data.split("_")[1])
-        t = TEXTS[lang]
-        # fetch goal title for confirmation message
         conn = sqlite3.connect("users.db")
         row = conn.execute("SELECT title FROM goals WHERE id=?", (goal_id,)).fetchone()
         conn.close()
@@ -1980,7 +1969,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("gdel_tasks_") or data.startswith("gdel_keep_"):
         delete_tasks = data.startswith("gdel_tasks_")
         goal_id = int(data.split("_")[2])
-        t = TEXTS[lang]
         n = delete_goal_from_db(goal_id, delete_tasks=delete_tasks)
         if n == 0:
             result_text = t["goal_deleted_no_tasks"]
@@ -1992,7 +1980,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data.startswith("gdel_cancel_"):
         goal_id = int(data.split("_")[2])
-        t = TEXTS[lang]
         conn = sqlite3.connect("users.db")
         row = conn.execute(
             "SELECT id, title, criteria, deadline, quadrant, quadrant_name, status FROM goals WHERE id=? AND status='active'",
@@ -2010,50 +1997,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]])
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
         return
-    # ── End goal delete flow ──────────────────────────────────────────────────
-    if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
-        if chat_id != BOT_OWNER_ID:
-            await query.answer("Нет доступа", show_alert=True)
-            return
-        announce_id = data.split("_", 2)[2]
-        ann = _pending_announcements.get(announce_id)
-        if data.startswith("announce_cancel_"):
-            _pending_announcements.pop(announce_id, None)
-            await query.edit_message_text("❌ Рассылка отменена.")
-            return
-        if not ann:
-            await query.answer("Анонс не найден или устарел", show_alert=True)
-            return
-        await query.edit_message_text("⏳ Рассылаю...")
-        conn = sqlite3.connect("users.db")
-        users_to_send = conn.execute(
-            "SELECT chat_id, lang FROM users WHERE last_active > datetime('now', '-30 days')"
-        ).fetchall()
-        conn.close()
-        sent = 0
-        failed = 0
-        for u_chat_id, u_lang in users_to_send:
-            text = ann.get(u_lang or "ru") or ann["ru"]
-            try:
-                await bot_app.bot.send_message(
-                    chat_id=u_chat_id, text=text, parse_mode="Markdown"
-                )
-                sent += 1
-                await asyncio.sleep(0.05)  # ~20 msg/sec, well within Telegram limits
-            except Exception as e:
-                failed += 1
-                logger.warning(f"[announce] failed to send to {u_chat_id}: {e}")
-        _pending_announcements.pop(announce_id, None)
-        await query.edit_message_text(
-            f"✅ *Рассылка завершена*\n📤 Отправлено: {sent}\n❌ Ошибок: {failed}",
-            parse_mode="Markdown"
-        )
+
+
+async def _cb_announce(query, context, data: str, chat_id: int):
+    if chat_id != BOT_OWNER_ID:
+        await query.answer("Нет доступа", show_alert=True)
         return
+    announce_id = data.split("_", 2)[2]
+    ann = _pending_announcements.get(announce_id)
+    if data.startswith("announce_cancel_"):
+        _pending_announcements.pop(announce_id, None)
+        await query.edit_message_text("❌ Рассылка отменена.")
+        return
+    if not ann:
+        await query.answer("Анонс не найден или устарел", show_alert=True)
+        return
+    await query.edit_message_text("⏳ Рассылаю...")
+    conn = sqlite3.connect("users.db")
+    users_to_send = conn.execute(
+        "SELECT chat_id, lang FROM users WHERE last_active > datetime('now', '-30 days')"
+    ).fetchall()
+    conn.close()
+    sent = 0
+    failed = 0
+    for u_chat_id, u_lang in users_to_send:
+        text = ann.get(u_lang or "ru") or ann["ru"]
+        try:
+            await bot_app.bot.send_message(chat_id=u_chat_id, text=text, parse_mode="Markdown")
+            sent += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            failed += 1
+            logger.warning(f"[announce] failed to send to {u_chat_id}: {e}")
+    _pending_announcements.pop(announce_id, None)
+    await query.edit_message_text(
+        f"✅ *Рассылка завершена*\n📤 Отправлено: {sent}\n❌ Ошибок: {failed}",
+        parse_mode="Markdown"
+    )
+
+
+async def _cb_calendar_connect(query, context, data: str, chat_id: int, lang: str, user):
     if data == "connect_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
-        # If triggered from a task card, save the task so we can resume after OAuth
         tasks = context.user_data.get("tasks", [])
-        # Try to find which task index triggered this (store all pending tasks)
         if tasks:
             save_user(chat_id, pending_task_json=json.dumps(tasks))
         auth_url = get_auth_url(chat_id)
@@ -2062,18 +2048,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Google Calendar", url=auth_url)]])
         )
         return
+    if data == "disconnect_calendar":
+        save_user(chat_id, calendar_token=None, calendar_connected=0)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            TEXTS[lang]["calendar_disconnected"],
+            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id), chat_id)
+        )
+        return
+    if data == "skip_calendar":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+
+async def _cb_settings(query, context, data: str, chat_id: int, lang: str, user):
+    t = TEXTS[lang]
     if data == "settings_feedback":
         allowed, remaining_min = check_feedback_cooldown(chat_id)
         if not allowed:
-            await query.answer(TEXTS[lang]["feedback_cooldown"].format(min=remaining_min), show_alert=True)
+            await query.answer(t["feedback_cooldown"].format(min=remaining_min), show_alert=True)
             return
         await query.edit_message_reply_markup(reply_markup=None)
         context.user_data["awaiting_feedback"] = True
-        await query.message.reply_text(TEXTS[lang]["feedback_prompt"])
+        await query.message.reply_text(t["feedback_prompt"])
         return
     if data == "settings_help":
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["help"], parse_mode="Markdown")
+        await query.message.reply_text(t["help"], parse_mode="Markdown")
         return
     if data == "settings_timezone":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2081,9 +2082,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "settings_reminder_before":
         await query.edit_message_reply_markup(reply_markup=None)
-        user = get_user(chat_id)
         minutes = user["reminder_minutes"] if user else 30
-        t = TEXTS[lang]
         opts = [10, 15, 30, 60, 120]
         rows = [[InlineKeyboardButton(f"{m} мин" if lang == "ru" else f"{m} min", callback_data=f"reminder_before_{m}") for m in opts]]
         rows.append([InlineKeyboardButton(t["btn_reminder_disable"], callback_data="reminder_before_off")])
@@ -2097,51 +2096,43 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mins = int(data[len("reminder_before_"):])
         save_user(chat_id, reminder_before=mins, reminder_minutes=mins)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["reminder_before_set"].format(min=mins))
+        await query.message.reply_text(t["reminder_before_set"].format(min=mins))
         return
     if data == "reminder_before_off":
         save_user(chat_id, reminder_before=0, reminder_minutes=0)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["reminder_off"])
+        await query.message.reply_text(t["reminder_off"])
         return
     if data == "settings_apple_cal":
-        t = TEXTS[lang]
-        user = get_user(chat_id)
-        token = user.get("ical_token") if user else None
+        user_obj = get_user(chat_id)
+        token = user_obj.get("ical_token") if user_obj else None
         if not token:
             token = secrets.token_urlsafe(24)
             save_user(chat_id, ical_token=token)
         open_url = f"{BASE_URL}/ical-open/{token}"
-        gcal_connected = bool(user and user.get("calendar_connected"))
+        gcal_connected = bool(user_obj and user_obj.get("calendar_connected"))
         info_text = t["apple_cal_info_gcal"] if gcal_connected else t["apple_cal_info"]
-        # If already subscribed — show status line on top
-        if user and user.get("ical_token"):
+        if user_obj and user_obj.get("ical_token"):
             info_text = f"{t['apple_cal_status']}\n\n" + info_text
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)
-        ]])
-        await query.message.reply_text(
-            info_text, parse_mode="Markdown", reply_markup=keyboard
-        )
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)]])
+        await query.message.reply_text(info_text, parse_mode="Markdown", reply_markup=keyboard)
         return
     if data == "settings_archive" or data.startswith("archive_page_"):
         await query.edit_message_reply_markup(reply_markup=None)
-        page = 0
-        if data.startswith("archive_page_"):
-            page = int(data.split("_")[-1])
+        page = int(data.split("_")[-1]) if data.startswith("archive_page_") else 0
         await send_archive_page(query, chat_id, lang, page)
         return
     if data == "settings_reminder":
         await query.edit_message_reply_markup(reply_markup=None)
-        user = get_user(chat_id)
         reminder_time = user["reminder_time"] if user else "08:00"
         reminder_enabled = user["reminder_enabled"] if user else 1
-        t = TEXTS[lang]
         status = reminder_time if reminder_enabled else t["reminder_disabled_text"]
-        times = ["06:00","07:00","08:00","09:00","10:00","11:00","12:00"]
-        rows = [[InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[:4]],
-                [InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[4:]],
-                [InlineKeyboardButton(t["btn_reminder_disable"], callback_data="reminder_disable")]]
+        times = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"]
+        rows = [
+            [InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[:4]],
+            [InlineKeyboardButton(h, callback_data=f"reminder_set_{h}") for h in times[4:]],
+            [InlineKeyboardButton(t["btn_reminder_disable"], callback_data="reminder_disable")],
+        ]
         await query.message.reply_text(
             t["reminder_settings"].format(time=status),
             parse_mode="Markdown",
@@ -2152,79 +2143,71 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_time = data[len("reminder_set_"):]
         save_user(chat_id, reminder_time=new_time, reminder_enabled=1)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["reminder_set"].format(time=new_time))
+        await query.message.reply_text(t["reminder_set"].format(time=new_time))
         return
     if data == "reminder_disable":
         save_user(chat_id, reminder_enabled=0)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["reminder_off"])
+        await query.message.reply_text(t["reminder_off"])
         return
-    if data == "disconnect_calendar":
-        save_user(chat_id, calendar_token=None, calendar_connected=0)
-        await query.edit_message_reply_markup(reply_markup=None)
-        user = get_user(chat_id)
-        await query.message.reply_text(
-            TEXTS[lang]["calendar_disconnected"],
-            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id), chat_id)
-        )
-        return
-    if data == "skip_calendar":
-        await query.edit_message_reply_markup(reply_markup=None)
-        return
-    if data.startswith("tz_"):
-        await query.edit_message_reply_markup(reply_markup=None)
-        onboarding = data.endswith("_ob")
-        clean_data = data[:-3] if onboarding else data  # strip _ob suffix
-        if clean_data in ("tz_manual", "tz_manual_ob"):
-            context.user_data["awaiting_timezone"] = True
-            context.user_data["timezone_onboarding"] = onboarding
-            await query.message.reply_text(TEXTS[lang]["timezone_prompt"], parse_mode="Markdown")
-        else:
-            idx_tz = int(clean_data[3:])
-            tz_name = POPULAR_TIMEZONES[idx_tz][1]
-            save_user(chat_id, timezone=tz_name)
-            await query.message.reply_text(
-                TEXTS[lang]["timezone_set"].format(tz=tz_name), parse_mode="Markdown"
-            )
-            if onboarding:
-                updated_user = get_user(chat_id)
-                await query.message.reply_text(
-                    TEXTS[lang]["lang_set"],
-                    reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
-                )
-        return
-    if data.startswith("ics_"):
-        idx = int(data[4:])
-        tasks = context.user_data.get("tasks", [])
-        if idx >= len(tasks):
-            await query.answer("Session expired. Please send the task again.")
-            return
-        task = tasks[idx]
-        user_obj = get_user(chat_id)
-        tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
-        ics_bytes = generate_ics(task, tz_name)
-        safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in task.get("title", "task"))[:40]
-        filename = f"{safe_title}.ics"
-        ics_captions = {
-            "ru": "📎 Откройте файл, чтобы добавить событие в Apple Calendar",
-            "uk": "📎 Відкрийте файл, щоб додати подію в Apple Calendar",
-            "en": "📎 Open the file to add the event to Apple Calendar",
-        }
-        await context.bot.send_document(
-            chat_id=chat_id,
-            document=io.BytesIO(ics_bytes),
-            filename=filename,
-            caption=ics_captions.get(lang, ics_captions["en"])
-        )
-        return
-    if data.startswith("set_remind_min_"):
+    if data == "set_remind_min_" or data.startswith("set_remind_min_"):
         mins = int(data[len("set_remind_min_"):])
         save_user(chat_id, reminder_minutes=mins, reminder_before=mins)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(TEXTS[lang]["reminder_ask_set"].format(min=mins))
+        await query.message.reply_text(t["reminder_ask_set"].format(min=mins))
         return
+
+
+async def _cb_tz(query, context, data: str, chat_id: int, lang: str):
+    await query.edit_message_reply_markup(reply_markup=None)
+    onboarding = data.endswith("_ob")
+    clean_data = data[:-3] if onboarding else data
+    if clean_data in ("tz_manual", "tz_manual_ob"):
+        context.user_data["awaiting_timezone"] = True
+        context.user_data["timezone_onboarding"] = onboarding
+        await query.message.reply_text(TEXTS[lang]["timezone_prompt"], parse_mode="Markdown")
+    else:
+        idx_tz = int(clean_data[3:])
+        tz_name = POPULAR_TIMEZONES[idx_tz][1]
+        save_user(chat_id, timezone=tz_name)
+        await query.message.reply_text(
+            TEXTS[lang]["timezone_set"].format(tz=tz_name), parse_mode="Markdown"
+        )
+        if onboarding:
+            updated_user = get_user(chat_id)
+            await query.message.reply_text(
+                TEXTS[lang]["lang_set"],
+                reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
+            )
+
+
+async def _cb_ics(query, context, data: str, chat_id: int, lang: str, user):
+    idx = int(data[4:])
+    tasks = context.user_data.get("tasks", [])
+    if idx >= len(tasks):
+        await query.answer("Session expired. Please send the task again.")
+        return
+    task = tasks[idx]
+    user_obj = get_user(chat_id)
+    tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
+    ics_bytes = generate_ics(task, tz_name)
+    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in task.get("title", "task"))[:40]
+    filename = f"{safe_title}.ics"
+    ics_captions = {
+        "ru": "📎 Откройте файл, чтобы добавить событие в Apple Calendar",
+        "uk": "📎 Відкрийте файл, щоб додати подію в Apple Calendar",
+        "en": "📎 Open the file to add the event to Apple Calendar",
+    }
+    await context.bot.send_document(
+        chat_id=chat_id,
+        document=io.BytesIO(ics_bytes),
+        filename=filename,
+        caption=ics_captions.get(lang, ics_captions["en"])
+    )
+
+
+async def _cb_recur(query, context, data: str, chat_id: int, lang: str, user):
     if data.startswith("recur_continue_"):
-        rid = int(data[len("recur_continue_"):])
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(TEXTS[lang]["recur_continued"])
         return
@@ -2276,7 +2259,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"recurring calendar error {chat_id}: {e}", exc_info=True)
                 await query.message.reply_text(TEXTS[lang]["calendar_error"] + str(e))
         else:
-            # treat as normal one-time save
             if user and user["calendar_connected"]:
                 service = get_calendar_service_for_user(chat_id)
                 if service:
@@ -2313,58 +2295,60 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save_task_to_db(chat_id, task)
                 await query.message.reply_text(TEXTS[lang]["task_saved"], parse_mode="Markdown")
         return
-    if data.startswith("force_save_") or data.startswith("cancel_save_"):
-        idx_str = data.split("_")[-1]
-        is_force = data.startswith("force_save_")
-        conflict_key = f"conflict_{idx_str}"
-        conflict_data = context.user_data.get(conflict_key)
-        if not conflict_data:
-            await query.answer("Session expired.")
-            return
-        task = conflict_data["task"]
-        cleanup_ids = conflict_data.get("cleanup_ids", [])
-        await query.edit_message_reply_markup(reply_markup=None)
-        if is_force:
-            msg = await query.message.reply_text(TEXTS[lang]["adding"])
+
+
+async def _cb_conflict(query, context, data: str, chat_id: int, lang: str, user):
+    idx_str = data.split("_")[-1]
+    is_force = data.startswith("force_save_")
+    conflict_key = f"conflict_{idx_str}"
+    conflict_data = context.user_data.get(conflict_key)
+    if not conflict_data:
+        await query.answer("Session expired.")
+        return
+    task = conflict_data["task"]
+    cleanup_ids = conflict_data.get("cleanup_ids", [])
+    await query.edit_message_reply_markup(reply_markup=None)
+    if is_force:
+        msg = await query.message.reply_text(TEXTS[lang]["adding"])
+        try:
+            link, _ = add_to_calendar(chat_id, task)
+            await msg.delete()
+            added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
+            await query.message.reply_text(
+                TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                parse_mode="Markdown",
+                reply_markup=added_markup
+            )
+            user_fresh = get_user(chat_id)
+            if not user_fresh["first_task_done"]:
+                save_user(chat_id, first_task_done=1)
+                await ask_reminder_minutes(query.message, chat_id, lang)
+        except Exception as e:
+            save_task_to_db(chat_id, task)
+            await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
+    else:
+        for msg_id in cleanup_ids:
             try:
-                link, _ = add_to_calendar(chat_id, task)
-                await msg.delete()
-                added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
-                await query.message.reply_text(
-                    TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
-                    parse_mode="Markdown",
-                    reply_markup=added_markup
-                )
-                user_fresh = get_user(chat_id)
-                if not user_fresh["first_task_done"]:
-                    save_user(chat_id, first_task_done=1)
-                    await ask_reminder_minutes(query.message, chat_id, lang)
-            except Exception as e:
-                save_task_to_db(chat_id, task)
-                await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
-        else:
-            for msg_id in cleanup_ids:
-                try:
-                    await context.bot.delete_message(chat_id, msg_id)
-                except Exception:
-                    pass
-            try:
-                await query.message.delete()
+                await context.bot.delete_message(chat_id, msg_id)
             except Exception:
                 pass
-        context.user_data.pop(conflict_key, None)
-        return
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+    context.user_data.pop(conflict_key, None)
+
+
+async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, user):
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
     idx_int = int(idx)
-    # If tasks not in context (e.g. after OAuth redirect), try to restore from DB
     if idx_int >= len(tasks):
         pending_json = user.get("pending_task_json") if user else None
         if pending_json:
             try:
                 tasks = json.loads(pending_json)
                 context.user_data["tasks"] = tasks
-                # Clear DB copy — tasks are now cached in memory for this session
                 save_user(chat_id, pending_task_json=None)
             except Exception:
                 pass
@@ -2390,7 +2374,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
-            link, task_id = add_to_calendar(chat_id, task)  # saves to DB internally
+            link, task_id = add_to_calendar(chat_id, task)
             context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
             await msg.delete()
             success_texts = {
@@ -2482,13 +2466,46 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user(chat_id, first_task_done=1)
             await ask_reminder_minutes(query.message, chat_id, lang)
     elif action == "skip":
-        # Delete task card + original user message + "Обрабатываю..."
         cleanup_ids = task.get("_cleanup_ids", [query.message.message_id])
         for msg_id in cleanup_ids:
             try:
                 await context.bot.delete_message(chat_id, msg_id)
             except Exception:
                 pass
+
+
+# ── Main callback dispatcher ──────────────────────────────────────────────────
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    data = query.data
+    if data.startswith("lang_"):
+        return await _cb_lang(query, context, data, chat_id, lang)
+    if data in ("goal_confirm_yes", "goal_confirm_no") or data.startswith(("goal_link_yes_", "goal_link_no_")):
+        return await _cb_goal(query, context, data, chat_id, lang)
+    if data.startswith("gdel_"):
+        return await _cb_goal_delete(query, context, data, chat_id, lang)
+    if data.startswith("announce_send_") or data.startswith("announce_cancel_"):
+        return await _cb_announce(query, context, data, chat_id)
+    if data in ("connect_calendar", "disconnect_calendar", "skip_calendar"):
+        return await _cb_calendar_connect(query, context, data, chat_id, lang, user)
+    if (data.startswith("settings_") or data.startswith("reminder_") or data == "reminder_disable"
+            or data.startswith("archive_page_") or data.startswith("set_remind_min_")):
+        return await _cb_settings(query, context, data, chat_id, lang, user)
+    if data.startswith("tz_"):
+        return await _cb_tz(query, context, data, chat_id, lang)
+    if data.startswith("ics_"):
+        return await _cb_ics(query, context, data, chat_id, lang, user)
+    if data.startswith("recur_"):
+        return await _cb_recur(query, context, data, chat_id, lang, user)
+    if data.startswith("force_save_") or data.startswith("cancel_save_"):
+        return await _cb_conflict(query, context, data, chat_id, lang, user)
+    return await _cb_task_action(query, context, data, chat_id, lang, user)
+
 
 async def show_timezone_menu(message, chat_id, lang, onboarding=False):
     user = get_user(chat_id)
