@@ -2561,12 +2561,24 @@ def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
 
+_RESCHEDULE_KEYWORDS = {
+    "ru": ["перенеси", "перенести", "сдвинь", "сдвинуть", "перепланируй", "измени дату", "измени время", "перенести на"],
+    "en": ["reschedule", "move to", "shift to", "change the date", "change the time", "move it to"],
+    "uk": ["перенеси", "перенести", "пересунь", "зміни дату", "зміни час", "перенести на"],
+}
+
 async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
     """
     Detect if the user wants to reschedule a saved task.
     Returns {"is_reschedule": True, "query": "...", "new_date": "YYYY-MM-DD", "new_time": "HH:MM"|null}
     or {"is_reschedule": False}
     """
+    # Fast keyword pre-filter — avoid LLM call if no reschedule signal present
+    keywords = _RESCHEDULE_KEYWORDS.get(lang, _RESCHEDULE_KEYWORDS["ru"])
+    text_lower = text.lower()
+    if not any(kw in text_lower for kw in keywords):
+        return {"is_reschedule": False}
+
     now = datetime.now(ZoneInfo(tz_name))
     today = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
