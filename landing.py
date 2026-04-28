@@ -373,8 +373,6 @@ _CSS = """
       font-size: 1.3rem; font-weight: 700; color: #fff;
       margin-bottom: 24px; letter-spacing: -.2px;
     }
-    .section-title::before { content: ""; display: inline-block; width: 4px; height: 1.1em;
-      background: var(--yellow); border-radius: 2px; margin-right: 10px; vertical-align: middle; }
 
     /* Cards grid */
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
