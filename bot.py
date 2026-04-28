@@ -2104,7 +2104,6 @@ async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def get_stats_data(days=7):
     conn = sqlite3.connect("users.db")
     now = datetime.utcnow()
-    # days=0 means "all time"
     if days == 0:
         since = "2000-01-01 00:00:00"
     else:
@@ -2114,12 +2113,20 @@ def get_stats_data(days=7):
     cal_users   = conn.execute("SELECT COUNT(*) FROM users WHERE calendar_connected=1").fetchone()[0]
     dau         = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (day_ago,)).fetchone()[0]
     active      = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (since,)).fetchone()[0]
-    new_users   = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='new_user' AND created_at >= ?", (since,)).fetchone()[0]
+    # "new users" = users whose first activity falls in this period (last_active used as proxy)
+    new_users   = conn.execute(
+        "SELECT COUNT(*) FROM users WHERE lang IS NOT NULL AND last_active >= ?", (since,)
+    ).fetchone()[0]
     tasks_total = conn.execute("SELECT COUNT(*) FROM tasks WHERE created_at >= ?", (since,)).fetchone()[0]
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
     text_total  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='text_task' AND created_at >= ?", (since,)).fetchone()[0]
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
-    # Chart: daily for ≤30 days, monthly for 90 days or all time
+    # All users list: chat_id, lang, calendar_connected, last_active — sorted by last_active desc
+    all_users   = conn.execute(
+        "SELECT chat_id, lang, calendar_connected, last_active FROM users "
+        "WHERE lang IS NOT NULL ORDER BY last_active DESC NULLS LAST"
+    ).fetchall()
+    # Chart data
     use_monthly = (days == 0 or days >= 90)
     if use_monthly:
         rows = conn.execute(
@@ -2149,7 +2156,8 @@ def get_stats_data(days=7):
                 voice_total=voice_total, text_total=text_total,
                 cal_connects=cal_connects, chart_data=chart_data,
                 use_monthly=use_monthly, days=days,
-                reminders_off_ids=reminders_off_ids)
+                reminders_off_ids=reminders_off_ids,
+                all_users=all_users)
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -2158,12 +2166,25 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s1  = get_stats_data(days=1)
     s7  = get_stats_data(days=7)
     s30 = get_stats_data(days=30)
+
+    # ── Reminders off block ───────────────────────────────────────────────────
     off_ids = s7.get("reminders_off_ids", [])
     if off_ids:
         off_lines = "\n".join(f"  • `{uid}`" for uid in off_ids)
         reminders_off_block = f"\n\n*🔕 Отключили уведомления ({len(off_ids)}):*\n{off_lines}"
     else:
         reminders_off_block = "\n\n*🔕 Отключили уведомления:* нет"
+
+    # ── Users list ────────────────────────────────────────────────────────────
+    all_users = s7.get("all_users", [])
+    cal_icon = {0: "·", 1: "📅"}
+    user_lines = []
+    for uid, lang, cal, last_active in all_users:
+        la = last_active[:10] if last_active else "—"
+        icon = cal_icon.get(cal, "·")
+        user_lines.append(f"  {icon} `{uid}` ({lang}) — {la}")
+    users_block = "\n".join(user_lines) if user_lines else "  нет"
+
     text = (
         "📊 *Статистика Get My Task*\n\n"
         f"👥 Всего пользователей: *{s7['total_users']}*\n"
@@ -2172,9 +2193,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• DAU (сегодня): *{s1['dau']}*\n"
         f"• WAU (7 дней): *{s7['active']}*\n"
         f"• MAU (30 дней): *{s30['active']}*\n\n"
-        f"*Новые пользователи:*\n"
-        f"• Сегодня: *{s1['new_users']}*\n"
-        f"• За 7 дней: *{s7['new_users']}*\n\n"
+        f"*Активные пользователи (7 дней): {s7['new_users']}*\n\n"
         f"*Задачи созданы:*\n"
         f"• Сегодня: *{s1['tasks_total']}*\n"
         f"• За 7 дней: *{s7['tasks_total']}*\n\n"
@@ -2184,6 +2203,12 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + reminders_off_block
     )
     await update.message.reply_text(text, parse_mode="Markdown")
+
+    # Send users list as separate message (can be long)
+    users_text = f"*👥 Все пользователи ({len(all_users)}):*\n`📅` = Google Calendar подключён\n\n" + users_block
+    # Telegram limit 4096 chars — split if needed
+    for i in range(0, len(users_text), 4000):
+        await update.message.reply_text(users_text[i:i+4000], parse_mode="Markdown")
 
 # ─── Goals ────────────────────────────────────────────────────────────────────
 
