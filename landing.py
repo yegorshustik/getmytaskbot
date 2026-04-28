@@ -73,18 +73,29 @@ _C = {
         "faq_title": "Частые вопросы",
         "faq": [
             ("Нужно ли устанавливать что-то отдельно?",
-             "Нет. Get My Task работает прямо в Telegram — просто открой бота @getmytask_bot и начни писать или диктовать."),
+             "Нет. Get My Task работает прямо в Telegram — просто открой бота @getmytask_bot и начни писать или диктовать. Никаких приложений, регистраций и паролей."),
+            ("Как добавить задачу голосом?",
+             "Просто запиши голосовое сообщение в боте — например: «Позвонить клиенту в пятницу в 15:00 и подготовить презентацию к понедельнику». Бот сам разберёт несколько задач, определит даты и расставит приоритеты по матрице Эйзенхауэра."),
+            ("Что такое матрица Эйзенхауэра и зачем она нужна?",
+             "Это система приоритетов из 4 квадрантов: Q1 — важно и срочно (делай сейчас), Q2 — важно, но не срочно (запланируй), Q3 — срочно, но не важно (делегируй), Q4 — не важно и не срочно (удали). Бот автоматически определяет квадрант для каждой задачи."),
+            ("Как работает утренний дайджест?",
+             "Каждое утро в выбранное тобой время бот присылает список задач на сегодня — с временем, приоритетами и повторяющимися делами. Так ты начинаешь день с чётким планом, а не со списком непрочитанных сообщений."),
             ("Как подключить Google Calendar?",
-             "Зайди в настройки бота, нажми «Подключить Google Calendar» и пройди стандартную OAuth-авторизацию. Занимает 30 секунд."),
+             "Зайди в настройки бота (кнопка «Настройки»), нажми «Подключить Google Calendar» и пройди стандартную авторизацию Google. Занимает 30 секунд. После этого все задачи с датой и временем можно добавлять в календарь одним нажатием."),
+            ("В чём разница между задачей и целью?",
+             "Задача — конкретное действие с датой: «Отправить отчёт до пятницы». Цель — результат, который ты хочешь достичь: «Запустить продукт до конца квартала». В боте можно создать цель, связать с ней задачи и отслеживать прогресс — сколько уже выполнено из запланированного."),
+            ("Можно ли перенести задачу на другой день?",
+             "Да. Напиши или надиктуй боту: «Перенеси встречу с клиентом на следующую среду» — бот найдёт задачу и обновит дату. Если задача есть в Google Calendar, она тоже обновится автоматически."),
             ("Бот платный?",
-             "Сейчас бот бесплатный. Все функции доступны без ограничений."),
+             "Сейчас бот полностью бесплатный. Все функции — голосовой ввод, Google Calendar, цели, напоминания — доступны без ограничений."),
+            ("Работает ли бот на iPhone и Android?",
+             "Да. Get My Task работает через Telegram, который есть на всех платформах: iOS, Android, macOS, Windows и в браузере. Устанавливать ничего дополнительно не нужно."),
             ("Мои данные в безопасности?",
-             "Да. Задачи хранятся только на нашем сервере и не передаются третьим лицам. OAuth-токен Google удаляется при отключении календаря."),
-            ("Можно ли использовать без Google Calendar?",
-             "Да. Бот полностью работает без календаря — задачи хранятся внутри бота. Calendar — опциональная интеграция."),
+             "Да. Задачи хранятся на нашем сервере и не передаются третьим лицам и не используются для рекламы. OAuth-токен Google хранится в зашифрованном виде и удаляется сразу при отключении календаря."),
         ],
 
         "footer_privacy": "Политика конфиденциальности",
+        "footer_contact": "Написать нам",
         "schema_desc": "Get My Task — AI-бот для Telegram, который превращает голосовые сообщения и текст в структурированные задачи с приоритетами, датами и синхронизацией с Google Calendar.",
     },
 
@@ -132,18 +143,29 @@ _C = {
         "faq_title": "FAQ",
         "faq": [
             ("Do I need to install anything?",
-             "No. Get My Task works directly inside Telegram — just open @getmytask_bot and start typing or dictating."),
+             "No. Get My Task works directly inside Telegram — just open @getmytask_bot and start typing or dictating. No sign-up, no passwords, no extra apps."),
+            ("How do I add a task by voice?",
+             "Just send a voice message to the bot — for example: 'Call the client on Friday at 3pm and prepare the presentation by Monday.' The bot extracts each task separately, detects dates, and classifies them using the Eisenhower Matrix."),
+            ("What is the Eisenhower Matrix and why does it matter?",
+             "It's a 4-quadrant priority system: Q1 — urgent & important (do now), Q2 — important, not urgent (schedule), Q3 — urgent, not important (delegate), Q4 — neither (drop). The bot automatically places each task in the right quadrant so you always know what to focus on."),
+            ("How does the morning digest work?",
+             "Every morning at your chosen time the bot sends a list of today's tasks — with times, priorities, and recurring items. You start the day with a clear plan instead of a pile of unread messages."),
             ("How do I connect Google Calendar?",
-             "Go to bot settings, tap 'Connect Google Calendar' and complete the standard OAuth flow. Takes about 30 seconds."),
+             "Go to bot settings, tap 'Connect Google Calendar' and complete the standard Google OAuth flow. Takes about 30 seconds. After that, any task with a date and time can be added to your calendar in one tap."),
+            ("What's the difference between a task and a goal?",
+             "A task is a specific action with a date: 'Send the report by Friday.' A goal is the outcome you want: 'Launch the product by end of quarter.' In the bot you can create a goal, link tasks to it, and track progress — how many are done out of the total."),
+            ("Can I reschedule a task?",
+             "Yes. Just write or dictate: 'Move the client meeting to next Wednesday' — the bot finds the task and updates the date. If the task is in Google Calendar, it updates there too automatically."),
             ("Is the bot free?",
-             "Yes, the bot is free. All features are available without any limitations."),
+             "Yes, the bot is completely free. All features — voice input, Google Calendar, goals, reminders — are available with no limitations."),
+            ("Does it work on iPhone and Android?",
+             "Yes. Get My Task runs inside Telegram, which is available on iOS, Android, macOS, Windows and in the browser. Nothing extra to install."),
             ("Is my data safe?",
-             "Yes. Tasks are stored only on our server and are never shared with third parties. Your Google OAuth token is deleted when you disconnect the calendar."),
-            ("Can I use it without Google Calendar?",
-             "Absolutely. The bot works fully without calendar — tasks are stored internally. Calendar sync is optional."),
+             "Yes. Tasks are stored on our server and are never shared with third parties or used for advertising. Your Google OAuth token is stored encrypted and deleted immediately when you disconnect the calendar."),
         ],
 
         "footer_privacy": "Privacy Policy",
+        "footer_contact": "Contact us",
         "schema_desc": "Get My Task is an AI Telegram bot that turns voice messages and text into structured tasks with priorities, dates and Google Calendar sync.",
     },
 
@@ -191,18 +213,29 @@ _C = {
         "faq_title": "Часті запитання",
         "faq": [
             ("Чи потрібно щось встановлювати?",
-             "Ні. Get My Task працює прямо в Telegram — просто відкрий бота @getmytask_bot і починай писати або диктувати."),
+             "Ні. Get My Task працює прямо в Telegram — просто відкрий бота @getmytask_bot і починай писати або диктувати. Жодних реєстрацій, паролів і додаткових застосунків."),
+            ("Як додати задачу голосом?",
+             "Просто запиши голосове повідомлення — наприклад: «Зателефонувати клієнту в п'ятницю о 15:00 і підготувати презентацію до понеділка». Бот сам розбере кілька задач, визначить дати й розставить пріоритети за матрицею Ейзенхауера."),
+            ("Що таке матриця Ейзенхауера і навіщо вона потрібна?",
+             "Це система пріоритетів із 4 квадрантів: Q1 — важливо і терміново (роби зараз), Q2 — важливо, але не терміново (сплануй), Q3 — терміново, але не важливо (делегуй), Q4 — не важливо і не терміново (видали). Бот автоматично визначає квадрант для кожної задачі."),
+            ("Як працює ранковий дайджест?",
+             "Щоранку в обраний тобою час бот надсилає список задач на сьогодні — з часом, пріоритетами і повторюваними справами. Починаєш день із чітким планом, а не зі списком непрочитаних повідомлень."),
             ("Як підключити Google Calendar?",
-             "Зайди в налаштування бота, натисни «Підключити Google Calendar» і пройди стандартну OAuth-авторизацію. Займає 30 секунд."),
+             "Зайди в налаштування бота, натисни «Підключити Google Calendar» і пройди стандартну авторизацію Google. Займає 30 секунд. Після цього будь-яку задачу з датою і часом можна додати в календар одним натисканням."),
+            ("У чому різниця між задачею і ціллю?",
+             "Задача — конкретна дія з датою: «Надіслати звіт до п'ятниці». Ціль — результат, якого ти хочеш досягти: «Запустити продукт до кінця кварталу». У боті можна створити ціль, прив'язати до неї задачі й відстежувати прогрес."),
+            ("Чи можна перенести задачу на інший день?",
+             "Так. Напиши або надиктуй боту: «Перенеси зустріч із клієнтом на наступну середу» — бот знайде задачу й оновить дату. Якщо задача є в Google Calendar, вона теж оновиться автоматично."),
             ("Бот платний?",
-             "Зараз бот безкоштовний. Всі функції доступні без обмежень."),
+             "Зараз бот повністю безкоштовний. Всі функції — голосове введення, Google Calendar, цілі, нагадування — доступні без обмежень."),
+            ("Чи працює бот на iPhone та Android?",
+             "Так. Get My Task працює через Telegram, який є на всіх платформах: iOS, Android, macOS, Windows і в браузері. Нічого додатково встановлювати не потрібно."),
             ("Мої дані в безпеці?",
-             "Так. Задачі зберігаються лише на нашому сервері і не передаються третім особам. OAuth-токен Google видаляється при відключенні календаря."),
-            ("Можна використовувати без Google Calendar?",
-             "Так. Бот повністю працює без календаря — задачі зберігаються всередині бота. Calendar — опціональна інтеграція."),
+             "Так. Задачі зберігаються на нашому сервері і не передаються третім особам та не використовуються для реклами. OAuth-токен Google зберігається в зашифрованому вигляді і видаляється одразу при відключенні календаря."),
         ],
 
         "footer_privacy": "Політика конфіденційності",
+        "footer_contact": "Написати нам",
         "schema_desc": "Get My Task — AI-бот для Telegram, який перетворює голосові повідомлення і текст на структуровані задачі з пріоритетами, датами та синхронізацією з Google Calendar.",
     },
 }
@@ -432,9 +465,14 @@ _CSS = """
     .faq-item p { padding: 0 20px 16px; color: var(--text); font-size: .9rem; line-height: 1.6; }
 
     /* Footer */
-    footer { margin-top: 56px; font-size: .82rem; color: var(--muted); text-align: center; }
-    footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; transition: color .15s, border-color .15s; }
-    footer a:hover { color: var(--yellow); border-color: var(--yellow); }
+    footer {
+      margin-top: 64px; font-size: .82rem; color: var(--muted); text-align: center;
+      border-top: 1px solid var(--border); padding-top: 32px; width: 100%; max-width: 680px;
+    }
+    .footer-links { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+    footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
+    footer a:hover { color: var(--yellow); }
+    .footer-copy { color: #4a4060; font-size: .78rem; }
 """
 
 
@@ -529,7 +567,12 @@ def _page(lang: str) -> str:
   </div>
 
   <footer>
-    <a href="/privacy">{c['footer_privacy']}</a>
+    <div class="footer-links">
+      <a href="/privacy">{c['footer_privacy']}</a>
+      <a href="mailto:hello.egour@gmail.com">{c['footer_contact']}</a>
+      <a href="https://t.me/getmytask_bot" rel="noopener">Telegram</a>
+    </div>
+    <div class="footer-copy">© 2025 Get My Task. All rights reserved.</div>
   </footer>
 
 </body>
