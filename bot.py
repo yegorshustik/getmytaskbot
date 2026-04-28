@@ -3450,6 +3450,7 @@ async def main():
     bot_app.add_handler(CommandHandler("mytasks", mytasks_command))
     bot_app.add_handler(CommandHandler("settings", settings_command))
     bot_app.add_handler(CommandHandler("stats", stats_command))
+    bot_app.add_handler(CommandHandler("admin", stats_command))
     bot_app.add_handler(CommandHandler("announce", announce_command))
     bot_app.add_handler(CommandHandler("goals", goals_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
