@@ -499,11 +499,6 @@ def _page(lang: str) -> str:
       <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
     </section>
 
-    <!-- Facts -->
-    <div class="facts-strip" aria-label="{c['facts_title']}">
-      {_facts_html(c)}
-    </div>
-
     <!-- For whom -->
     <section class="section" aria-labelledby="for-whom">
       <h2 class="section-title" id="for-whom">{c['for_whom_title']}</h2>
