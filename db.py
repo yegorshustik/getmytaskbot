@@ -235,6 +235,43 @@ def get_active_task_count(chat_id):
     return count
 
 
+def find_upcoming_tasks(chat_id: int, query: str) -> list[dict]:
+    """Search undone future tasks by title (case-insensitive substring match)."""
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        "SELECT id, title, suggested_date, suggested_time, google_event_id "
+        "FROM tasks WHERE chat_id=? AND done=0 AND suggested_date >= ? "
+        "AND LOWER(title) LIKE ? ORDER BY suggested_date, suggested_time",
+        (chat_id, today, f"%{query.lower()}%")
+    ).fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "title": r[1], "suggested_date": r[2],
+         "suggested_time": r[3], "google_event_id": r[4]}
+        for r in rows
+    ]
+
+
+def reschedule_task_in_db(task_id: int, new_date: str, new_time: str | None = None):
+    """Update suggested_date (and optionally suggested_time) of a saved task."""
+    conn = sqlite3.connect("users.db")
+    if new_time is not None:
+        conn.execute(
+            "UPDATE tasks SET suggested_date=?, suggested_time=? WHERE id=?",
+            (new_date, new_time, task_id)
+        )
+    else:
+        conn.execute(
+            "UPDATE tasks SET suggested_date=? WHERE id=?",
+            (new_date, task_id)
+        )
+    conn.commit()
+    conn.close()
+
+
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
     cur = conn.execute(

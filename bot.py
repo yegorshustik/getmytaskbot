@@ -35,11 +35,13 @@ from db import (
     get_active_task_count, save_task_to_db, link_task_to_goal,
     save_goal_to_db, get_active_goals, delete_goal_from_db, get_goal_progress,
     save_oauth_state, pop_oauth_state,
+    find_upcoming_tasks, reschedule_task_in_db,
 )
 from calendar_utils import (
     get_calendar_service_for_user, check_conflicts,
     add_to_calendar, add_recurring_to_calendar, describe_recurrence,
     generate_ics, get_auth_url, SCOPES, get_tz_offset_str,
+    update_calendar_event_date,
 )
 
 groq_client = Groq(api_key=GROQ_API_KEY)
@@ -211,10 +213,11 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
     prompts = {
         "ru": f"""Ты — ассистент по управлению задачами. Сейчас {today} {current_time} (часовой пояс {tz_name}). Из текста извлеки все задачи и классифицируй по матрице Эйзенхауэра.
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
-ВАЖНО про title: (1) Каждый title обязан содержать глагол-действие — никаких безглагольных фрагментов. (2) Если пользователь перечисляет несколько объектов при одном глаголе ("протестировать X, Y и Z") — ВСЕГДА создавай ОДНУ задачу: "Протестировать X, Y и Z". Разбивай на несколько задач ТОЛЬКО если у каждой явно разные дата/время или контекст. (3) Каждый title должен быть самодостаточным законченным действием.
+ВАЖНО про title: (1) Каждый title обязан содержать глагол-действие — никаких безглагольных фрагментов. (2) Если пользователь перечисляет несколько объектов при одном глаголе ("протестировать X, Y и Z") — ВСЕГДА создавай ОДНУ задачу: "Протестировать X, Y и З". Разбивай на несколько задач ТОЛЬКО если у каждой явно разные дата/время или контекст. (3) Каждый title должен быть самодостаточным законченным действием.
 ВАЖНО про даты: (1) Если пользователь НЕ указал дату/время явно — верни suggested_date: null, suggested_time: null. (2) Никогда не выдумывай дату или время — только то, что пользователь сказал напрямую. (3) Явное указание — это: "сегодня", "завтра", конкретное число, "через N минут/часов/дней", "утром", "вечером", конкретное время ("в 15:00", "в 3 часа"). Общие фразы вроде "нужно сделать", "хочу", "планирую" без указания когда — НЕ явное.
 Правила вычисления времени: "через N минут/часов" — прибавь к {current_time} и верни конкретные suggested_date + suggested_time; "через N дней" — прибавь к сегодня; "завтра", "послезавтра" — только дата, время null если не указано явно.
 ВАЖНО про suggested_time: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Если время указано явно и уже прошло — флипни AM/PM (+12 ч).
+ВАЖНО про длительность: если пользователь явно указал продолжительность ("на час", "на 45 минут", "с 14:00 до 16:00", "2 часа") — добавь поле duration_minutes (целое число). Если длительность не указана — не включай поле duration_minutes.
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
 Если в тексте есть URL (ссылка на Zoom, Meet, сайт и т.д.) — добавь поле url с этой ссылкой. Иначе не включай поле url.
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
@@ -224,6 +227,7 @@ IMPORTANT about title: (1) Every title must contain an action verb — no fragme
 IMPORTANT about dates: (1) If the user did NOT explicitly mention a date/time — return suggested_date: null, suggested_time: null. (2) Never invent a date or time — only use what the user said directly. (3) Explicit indicators: "today", "tomorrow", a specific date, "in N minutes/hours/days", "morning", "evening", a specific time ("at 3pm", "at 15:00"). Generic phrases like "need to do", "want to", "planning to" without saying when — are NOT explicit.
 Time calculation rules: "in N minutes/hours" — add to {current_time} and return concrete suggested_date + suggested_time; "in N days" — add to today's date; "tomorrow", "next week" — date only, time null unless stated.
 IMPORTANT about suggested_time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) If time was explicitly stated but is in the past — flip AM/PM (+12h).
+IMPORTANT about duration: if the user explicitly states a duration ("for an hour", "45 minutes", "from 2pm to 4pm", "2 hours") — add field duration_minutes (integer). If no duration is stated — do not include duration_minutes.
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
 If the text contains a URL (Zoom, Meet, website link, etc.) — add a url field with that link. Otherwise don't include the url field.
 Return ONLY a valid JSON array. No explanations.""",
@@ -233,6 +237,7 @@ Return ONLY a valid JSON array. No explanations.""",
 ВАЖЛИВО про дати: (1) Якщо користувач НЕ вказав дату/час явно — повертай suggested_date: null, suggested_time: null. (2) Ніколи не вигадуй дату або час — тільки те, що користувач сказав напряму. (3) Явна вказівка — це: "сьогодні", "завтра", конкретне число, "через N хвилин/годин/днів", "вранці", "ввечері", конкретний час ("о 15:00", "о 3 годині"). Загальні фрази на кшталт "треба зробити", "хочу", "планую" без вказівки коли — НЕ явні.
 Правила обчислення часу: "через N хвилин/годин" — додай до {current_time} і поверни конкретні suggested_date + suggested_time; "через N днів" — додай до сьогоднішньої дати; "завтра", "післязавтра" — лише дата, час null якщо не вказано.
 ВАЖЛИВО про suggested_time: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Якщо час вказано явно, але вже минув — флипни AM/PM (+12 год).
+ВАЖЛИВО про тривалість: якщо користувач явно вказав тривалість ("на годину", "на 45 хвилин", "з 14:00 до 16:00", "2 години") — додай поле duration_minutes (ціле число). Якщо тривалість не вказана — не включай поле duration_minutes.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
 Якщо в тексті є URL (посилання на Zoom, Meet, сайт тощо) — додай поле url з цим посиланням. Інакше не включай поле url.
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
@@ -995,6 +1000,53 @@ async def handle_reschedule(update, context, text, chat_id, lang):
     except Exception as e:
         await update.message.reply_text(TEXTS[lang]["error"] + str(e))
 
+
+async def handle_reschedule_saved(update, context, reschedule_info: dict, chat_id: int, lang: str):
+    """Handle rescheduling of an already saved task."""
+    t = TEXTS[lang]
+    query = reschedule_info.get("query", "")
+    new_date = reschedule_info.get("new_date", "")
+    new_time = reschedule_info.get("new_time") or None
+
+    if not query or not new_date:
+        await update.message.reply_text(t["correction_unclear"])
+        return
+
+    matches = find_upcoming_tasks(chat_id, query)
+    if not matches:
+        await update.message.reply_text(
+            t["reschedule_not_found"].format(query=query), parse_mode="Markdown"
+        )
+        return
+
+    if len(matches) == 1:
+        task = matches[0]
+        date_display = format_date(new_date, lang)
+        if new_time:
+            date_display += f" {new_time}"
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_reschedule_yes"], callback_data=f"mv_yes_{task['id']}_{new_date}_{new_time or ''}"),
+            InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no"),
+        ]])
+        await update.message.reply_text(
+            t["reschedule_confirm"].format(title=task["title"], date=date_display),
+            reply_markup=kb, parse_mode="Markdown"
+        )
+    else:
+        # Multiple matches — show list with dates for user to pick
+        buttons = []
+        for task in matches[:5]:
+            date_display = format_date(task["suggested_date"], lang)
+            label = f"{task['title']} — {date_display}"
+            buttons.append([InlineKeyboardButton(
+                label, callback_data=f"mv_pick_{task['id']}_{new_date}_{new_time or ''}"
+            )])
+        buttons.append([InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no")])
+        await update.message.reply_text(
+            t["reschedule_choose"], reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown"
+        )
+
+
 async def process_and_show_from_callback(query, context, text, chat_id, lang):
     """Same as process_and_show but triggered from a callback (no Update object)."""
     user = get_user(chat_id)
@@ -1021,6 +1073,11 @@ async def process_and_show_from_callback(query, context, text, chat_id, lang):
 async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
+    # ── Reschedule saved task intent ──────────────────────────────────────────
+    reschedule_info = await classify_reschedule_intent(text, lang, tz_name)
+    if reschedule_info.get("is_reschedule"):
+        await handle_reschedule_saved(update, context, reschedule_info, chat_id, lang)
+        return
     # ── Goal rename intent ────────────────────────────────────────────────────
     if is_goal_rename_intent(text, lang):
         await update.message.reply_text(TEXTS[lang]["goal_rename_hint"], parse_mode="Markdown")
@@ -2054,6 +2111,65 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                 pass
 
 
+async def _cb_move_task(query, context, data: str, chat_id: int, lang: str, user):
+    """Handle mv_yes_<task_id>_<new_date>_<new_time>, mv_pick_<task_id>_<new_date>_<new_time>, mv_no."""
+    t = TEXTS[lang]
+
+    if data == "mv_no":
+        await query.message.edit_reply_markup(reply_markup=None)
+        return
+
+    # data format: mv_yes_<id>_<date>_<time>  or  mv_pick_<id>_<date>_<time>
+    # time part can be empty string
+    parts = data.split("_", 4)  # ['mv', 'yes'/'pick', id, date, time_or_empty]
+    if len(parts) < 4:
+        return
+    action = parts[1]   # 'yes' or 'pick'
+    task_id = int(parts[2])
+    new_date = parts[3]
+    new_time = parts[4] if len(parts) > 4 and parts[4] else None
+
+    if action == "pick":
+        # Show confirmation for this specific task
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT title FROM tasks WHERE id=?", (task_id,)).fetchone()
+        conn.close()
+        title = row[0] if row else "?"
+        date_display = format_date(new_date, lang)
+        if new_time:
+            date_display += f" {new_time}"
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t["btn_reschedule_yes"], callback_data=f"mv_yes_{task_id}_{new_date}_{new_time or ''}"),
+            InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no"),
+        ]])
+        await query.message.edit_text(
+            t["reschedule_confirm"].format(title=title, date=date_display),
+            reply_markup=kb, parse_mode="Markdown"
+        )
+        return
+
+    # action == 'yes' — do the actual reschedule
+    conn = sqlite3.connect("users.db")
+    row = conn.execute("SELECT title, google_event_id FROM tasks WHERE id=?", (task_id,)).fetchone()
+    conn.close()
+    if not row:
+        await query.message.edit_text(t["error"] + "task not found")
+        return
+    title, google_event_id = row
+    reschedule_task_in_db(task_id, new_date, new_time)
+    date_display = format_date(new_date, lang)
+    if new_time:
+        date_display += f" {new_time}"
+    if google_event_id and user and user.get("calendar_connected"):
+        ok = update_calendar_event_date(chat_id, google_event_id, new_date, new_time)
+        msg_key = "reschedule_done_cal" if ok else "reschedule_done"
+    else:
+        msg_key = "reschedule_done"
+    await query.message.edit_text(
+        t[msg_key].format(title=title, date=date_display), parse_mode="Markdown"
+    )
+
+
 # ── Main callback dispatcher ──────────────────────────────────────────────────
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2084,6 +2200,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_recur(query, context, data, chat_id, lang, user)
     if data.startswith("force_save_") or data.startswith("cancel_save_"):
         return await _cb_conflict(query, context, data, chat_id, lang, user)
+    if data.startswith("mv_"):
+        return await _cb_move_task(query, context, data, chat_id, lang, user)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
 
 
@@ -2275,6 +2393,60 @@ async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: d
 def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
+
+async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
+    """
+    Detect if the user wants to reschedule a saved task.
+    Returns {"is_reschedule": True, "query": "...", "new_date": "YYYY-MM-DD", "new_time": "HH:MM"|null}
+    or {"is_reschedule": False}
+    """
+    now = datetime.now(ZoneInfo(tz_name))
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+    prompts = {
+        "ru": (
+            f"Сегодня {today} {current_time} (пояс {tz_name}).\n"
+            f"Текст: «{text}»\n"
+            "Хочет ли пользователь перенести (reschedule) уже существующую задачу на другую дату/время?\n"
+            "Признаки: слова «перенеси», «перенести», «сдвинь», «перепланируй», «измени дату», «измени время» + название задачи.\n"
+            "Если да — извлеки название задачи (query) и новую дату/время.\n"
+            'Верни ТОЛЬКО JSON: {"is_reschedule": true, "query": "название задачи", "new_date": "YYYY-MM-DD", "new_time": "HH:MM или null"}\n'
+            'или {"is_reschedule": false}'
+        ),
+        "en": (
+            f"Today is {today} {current_time} (timezone {tz_name}).\n"
+            f"Text: '{text}'\n"
+            "Does the user want to reschedule an existing task to a different date/time?\n"
+            "Signals: words like 'reschedule', 'move', 'shift', 'change the date/time of' + task name.\n"
+            "If yes — extract the task name (query) and the new date/time.\n"
+            'Return ONLY JSON: {"is_reschedule": true, "query": "task name", "new_date": "YYYY-MM-DD", "new_time": "HH:MM or null"}\n'
+            'or {"is_reschedule": false}'
+        ),
+        "uk": (
+            f"Сьогодні {today} {current_time} (пояс {tz_name}).\n"
+            f"Текст: «{text}»\n"
+            "Чи хоче користувач перенести існуючу задачу на іншу дату/час?\n"
+            "Ознаки: слова «перенеси», «перенести», «пересунь», «зміни дату», «зміни час» + назва задачі.\n"
+            "Якщо так — витягни назву задачі (query) і нову дату/час.\n"
+            'Поверни ТІЛЬКИ JSON: {"is_reschedule": true, "query": "назва задачі", "new_date": "YYYY-MM-DD", "new_time": "HH:MM або null"}\n'
+            'або {"is_reschedule": false}'
+        ),
+    }
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
+            max_tokens=80, temperature=0,
+        )
+        raw = resp.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw.strip())
+    except Exception:
+        return {"is_reschedule": False}
+
 
 def is_goal_rename_intent(text: str, lang: str) -> bool:
     """Return True if the user explicitly wants to rename/change the name of a goal."""

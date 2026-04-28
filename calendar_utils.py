@@ -86,6 +86,34 @@ def check_conflicts(service, date, time, timezone="Europe/Moscow"):
         return []
 
 
+def update_calendar_event_date(chat_id: int, event_id: str, new_date: str, new_time: str | None) -> bool:
+    """Patch a Google Calendar event with a new date/time. Returns True on success."""
+    service = get_calendar_service_for_user(chat_id)
+    if not service:
+        return False
+    user = get_user(chat_id)
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    try:
+        if new_time:
+            start_dt = datetime.strptime(f"{new_date}T{new_time}", "%Y-%m-%dT%H:%M")
+            end_dt = start_dt + timedelta(minutes=30)
+            start = {"dateTime": f"{new_date}T{new_time}:00", "timeZone": tz_name}
+            end = {"dateTime": f"{end_dt.strftime('%Y-%m-%d')}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
+        else:
+            next_day = (datetime.strptime(new_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            start = {"date": new_date}
+            end = {"date": next_day}
+        service.events().patch(
+            calendarId="primary",
+            eventId=event_id,
+            body={"start": start, "end": end},
+        ).execute()
+        return True
+    except Exception as e:
+        logger.error(f"update_calendar_event_date error: {e}")
+        return False
+
+
 def add_to_calendar(chat_id, task):
     service = get_calendar_service_for_user(chat_id)
     if not service:
@@ -95,9 +123,10 @@ def add_to_calendar(chat_id, task):
     reminder_mins = user.get("reminder_minutes", 30) if user else 30
     date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
     time = task.get("suggested_time")
+    duration = task.get("duration_minutes", 30)
     if time:
         start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
-        end_dt = start_dt + timedelta(minutes=30)
+        end_dt = start_dt + timedelta(minutes=duration)
         start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
         end = {"dateTime": f"{end_dt.strftime('%Y-%m-%d')}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
     else:
@@ -146,9 +175,10 @@ def add_recurring_to_calendar(chat_id, task):
     freq = recurrence_obj.get("freq", "DAILY")
     days = recurrence_obj.get("days", [])
     rrule = f"RRULE:FREQ={freq}" + (f";BYDAY={','.join(days)}" if days else "")
+    duration = task.get("duration_minutes", 30)
     if time:
         start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
-        end_dt = start_dt + timedelta(minutes=30)
+        end_dt = start_dt + timedelta(minutes=duration)
         start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
         end = {"dateTime": f"{end_dt.strftime('%Y-%m-%d')}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
     else:
@@ -180,12 +210,13 @@ def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
     time = task.get("suggested_time")
     title = task.get("title", "Task").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
     description = task.get("reason", "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    duration = task.get("duration_minutes", 30)
     now_utc = datetime.now(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
     uid = str(uuid.uuid4())
     if time:
         tz = ZoneInfo(tz_name)
         dt_start = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M").replace(tzinfo=tz)
-        dt_end = dt_start + timedelta(minutes=30)
+        dt_end = dt_start + timedelta(minutes=duration)
         fmt = "%Y%m%dT%H%M%S"
         dtstart_line = f"DTSTART;TZID={tz_name}:{dt_start.strftime(fmt)}"
         dtend_line = f"DTEND;TZID={tz_name}:{dt_end.strftime(fmt)}"
