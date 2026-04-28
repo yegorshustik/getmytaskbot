@@ -479,7 +479,9 @@ _CSS = """
 # ── Page builder ─────────────────────────────────────────────────────────────
 
 def _page(lang: str) -> str:
+    from datetime import datetime as _dt
     c = _C[lang]
+    year = _dt.now().year
     alt = {"ru": "en", "en": "uk", "uk": "ru"}
     active = {l: ' class="active"' if l == lang else "" for l in ("ru", "en", "uk")}
 
@@ -569,10 +571,8 @@ def _page(lang: str) -> str:
   <footer>
     <div class="footer-links">
       <a href="/privacy">{c['footer_privacy']}</a>
-      <a href="mailto:hello.egour@gmail.com">{c['footer_contact']}</a>
-      <a href="https://t.me/getmytask_bot" rel="noopener">Telegram</a>
     </div>
-    <div class="footer-copy">© 2025 Get My Task. All rights reserved.</div>
+    <div class="footer-copy">© {year} Get My Task. All rights reserved.</div>
   </footer>
 
 </body>
