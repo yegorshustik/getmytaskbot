@@ -71,6 +71,24 @@ def mark_feedback_sent(chat_id: int):
     _feedback_last_sent[chat_id] = _time.monotonic()
 
 
+def _is_free_dialog(text: str) -> bool:
+    """Return True if the text looks like a question or free-form chat rather than a task."""
+    t = text.strip().lower()
+    if "?" in t:
+        return True
+    question_words = (
+        # ru
+        "куда", "зачем", "почему", "отчего", "откуда", "когда делись",
+        "как так", "что случилось", "что произошло", "что с ", "что за",
+        "а где", "а что", "а как", "а почему", "а куда",
+        # en
+        "where did", "what happened", "why did", "how come",
+        # uk
+        "куди", "чому", "навіщо", "де поділись",
+    )
+    return any(t.startswith(kw) or f" {kw}" in t for kw in question_words)
+
+
 def _feedback_keyboard(lang: str) -> InlineKeyboardMarkup:
     """Single-button keyboard with 'Write to us' that triggers the feedback flow."""
     return InlineKeyboardMarkup([[
@@ -1068,7 +1086,10 @@ async def process_and_show_from_callback(query, context, text, chat_id, lang):
     tz_name = user["timezone"] if user else "Europe/Moscow"
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
-        await query.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
+        if _is_free_dialog(text):
+            await query.message.reply_text(TEXTS[lang]["free_dialog"], reply_markup=_feedback_keyboard(lang))
+        else:
+            await query.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
         return
     valid_tasks = []
     for task in tasks:
@@ -1121,7 +1142,10 @@ async def process_and_show(update, context, text, chat_id, lang):
         return
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
-        await update.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
+        if _is_free_dialog(text):
+            await update.message.reply_text(TEXTS[lang]["free_dialog"], reply_markup=_feedback_keyboard(lang))
+        else:
+            await update.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
         return
     # Validate and adjust task times — never allow past datetimes
     valid_tasks = []
