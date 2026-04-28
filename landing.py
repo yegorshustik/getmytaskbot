@@ -2,8 +2,28 @@
 landing.py — Get My Task landing page.
 
 Kept separate from bot.py so it survives refactors.
-Imported by bot.py: from landing import get_home_html, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
+Imported by bot.py: from landing import get_home_html, FAVICON_ICO, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 """
+import base64 as _b64
+
+# favicon.ico — generated with Pillow (purple bg + yellow bot face, 16/32/48/64px)
+FAVICON_ICO: bytes = _b64.b64decode(
+    "AAABAAEAEBAAAAAAIAD9AgAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAQAAAAEAgGAAAAH/P/YQAA"
+    "AsRJREFUeJxNk02IllUUx3/n3vt+vxmvzfgV9Oo04Ts1EIZZ6UpXOeGmjagISvZBENUibNEu"
+    "CGPKRUq1S6wWgbpQEGRcCLZqo8yiCRpHNwXRB8Oo8zzv83FP3Pu8aQfu5XDO/9xz/+dDAA5P"
+    "HJkx4mZVdEpVEUHyIWTDqGMsNNuCKirBqbLgtfjg26Uzl+XgxNG9deMugdhSCw3+ooDeuPDq"
+    "O3XWjBkufjlkcd5TqxMfseIEtMx8sc9Z+CIEF5qXglhjYLiqvDhTY8/hBqCIh09fX6XeFLRE"
+    "AtZJzYZYI2ImY2bEBjoKEXj+VMYv13OGy8rXH6aURfASKcmD35pJo+FTwS4V4N6ysqEv7NrX"
+    "eHRMEAPPv+x4apslXVWKnGgLMSHWBSVm9pBnylsnmjz9kmPTwEAK+VB5Y7bJX0ue3295vjqe"
+    "svynUm/GekF8K9xpohz7uMna9YbT7yac/SglTRXXhKvfZHz2ZsKdBc/7p1s02+B9RceEq8yh"
+    "t86w9TnLuVNDPrnS4Z8/lPlrBcmKMvd9zom5Dr/eKEjuKtM7Hcm9Kr0J1zBVnnnB8thmy2C7"
+    "5fPXEmwNntxmaXSF6V2Wk8eCTeg/a5neaWP2IC4ooTD9KUNrDRw63mD+ekl/YGIRyxT2v9dg"
+    "/seCwQ5Hd73wxFYThyu0zPzXmiytDHd+9pHj2i0G2xHqveo8PmlYvFGGOaiwI3Gj1ledUOj2"
+    "hPPfZcz9kDO+UcIYcXfZs/I3vHK0FoEhYCTqBBFVr412EurRGxPePtni9s2S35Z8RPfWWQY7"
+    "Au8wwdDujvYCEVd6v9hp1yZ/ulKUu/fX7SNjArmyZbuN54FkD1Nfu5CVzjirFItxmRrWXUrvY"
+    "zdMeB3vG/F5BY4zGos06rmF+yuqt2+K1FvEZYrcD0wcmWnV3GyS6FSW+rjOD1P/j3DgbIVO1"
+    "yzkRbXO/wKjRirwWU3cVwAAAABJRU5ErkJggg=="
+)
 
 _ICON_SVG = """<svg viewBox="0 0 501.5 500.3" xmlns="http://www.w3.org/2000/svg">
 <rect fill="#5D2362" width="501.5" height="500.3"/>
@@ -512,6 +532,7 @@ def _page(lang: str) -> str:
   <meta name="twitter:card" content="summary"/>
   <meta name="twitter:title" content="Get My Task — {c['tagline']}"/>
   <meta name="twitter:description" content="{c['desc']}"/>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json">{_schema_json(c, lang)}</script>
