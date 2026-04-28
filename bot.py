@@ -1631,6 +1631,29 @@ async def _cb_goal(query, context, data: str, chat_id: int, lang: str):
             except Exception:
                 await query.edit_message_reply_markup(reply_markup=None)
         return
+    if data.startswith("goal_close_"):
+        goal_id = int(data.split("_")[2])
+        conn = sqlite3.connect("users.db")
+        grow = conn.execute("SELECT title FROM goals WHERE id=?", (goal_id,)).fetchone()
+        conn.execute("UPDATE goals SET status='done' WHERE id=?", (goal_id,))
+        conn.commit()
+        conn.close()
+        goal_title = grow[0] if grow else "?"
+        await query.edit_message_text(
+            t["goal_closed_done"].format(goal=goal_title), parse_mode="Markdown"
+        )
+        return
+    if data.startswith("goal_add_tasks_"):
+        goal_id = int(data.split("_")[3])
+        conn = sqlite3.connect("users.db")
+        grow = conn.execute("SELECT title FROM goals WHERE id=?", (goal_id,)).fetchone()
+        conn.close()
+        goal_title = grow[0] if grow else "?"
+        context.user_data["pending_goal_id"] = goal_id
+        await query.edit_message_text(
+            t["goal_add_tasks_prompt"].format(goal=goal_title), parse_mode="Markdown"
+        )
+        return
 
 
 async def _cb_goal_delete(query, context, data: str, chat_id: int, lang: str):
@@ -2076,7 +2099,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                 parse_mode="Markdown",
                 reply_markup=added_markup
             )
-            await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
+            await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx, context=context, saved_task_id=task_id)
             user_fresh = get_user(chat_id)
             if not user_fresh["first_task_done"]:
                 save_user(chat_id, first_task_done=1)
@@ -2124,7 +2147,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                         parse_mode="Markdown",
                         reply_markup=added_markup
                     )
-                    await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
+                    await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx, context=context, saved_task_id=task_id)
                     user_fresh = get_user(chat_id)
                     if not user_fresh["first_task_done"]:
                         save_user(chat_id, first_task_done=1)
@@ -2148,7 +2171,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
             + TEXTS[lang]["task_saved"]
         )
         await query.edit_message_text(card, parse_mode="Markdown")
-        await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx)
+        await _offer_goal_link_if_relevant(query.message, chat_id, lang, task, idx, context=context, saved_task_id=task_id)
         user_fresh = get_user(chat_id)
         if not user_fresh["first_task_done"]:
             save_user(chat_id, first_task_done=1)
@@ -2230,14 +2253,31 @@ async def _cb_reminder_action(query, context, data: str, chat_id: int, lang: str
 
     if action == "done":
         conn = sqlite3.connect("users.db")
-        row = conn.execute("SELECT title FROM tasks WHERE id=?", (task_id,)).fetchone()
+        row = conn.execute("SELECT title, goal_id FROM tasks WHERE id=?", (task_id,)).fetchone()
         conn.execute("UPDATE tasks SET done=1 WHERE id=?", (task_id,))
         conn.commit()
         conn.close()
         title = row[0] if row else "?"
+        goal_id = row[1] if row else None
         await query.edit_message_text(
             t["reminder_task_done"].format(title=title), parse_mode="Markdown"
         )
+        if goal_id:
+            done_count, total_count = get_goal_progress(goal_id)
+            if total_count > 0 and done_count == total_count:
+                conn = sqlite3.connect("users.db")
+                grow = conn.execute("SELECT title FROM goals WHERE id=?", (goal_id,)).fetchone()
+                conn.close()
+                goal_title = grow[0] if grow else "?"
+                kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t["btn_goal_close"], callback_data=f"goal_close_{goal_id}"),
+                    InlineKeyboardButton(t["btn_goal_add_tasks"], callback_data=f"goal_add_tasks_{goal_id}"),
+                ]])
+                await query.message.reply_text(
+                    t["goal_all_done"].format(goal=goal_title),
+                    parse_mode="Markdown",
+                    reply_markup=kb,
+                )
         return
 
     # action == "mv": show tomorrow / next-week quick-pick
@@ -2285,7 +2325,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     if data.startswith("lang_"):
         return await _cb_lang(query, context, data, chat_id, lang)
-    if data in ("goal_confirm_yes", "goal_confirm_no") or data.startswith(("goal_link_yes_", "goal_link_no_")):
+    if data in ("goal_confirm_yes", "goal_confirm_no") or data.startswith(("goal_link_yes_", "goal_link_no_", "goal_close_", "goal_add_tasks_")):
         return await _cb_goal(query, context, data, chat_id, lang)
     if data.startswith("gdel_"):
         return await _cb_goal_delete(query, context, data, chat_id, lang)
@@ -2471,10 +2511,30 @@ def _task_matches_goal(task_title: str, goal_title: str) -> bool:
         return {w.lower().strip(".,!?") for w in s.split()} - _STOP_WORDS
     return bool(words(task_title) & words(goal_title))
 
-async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: dict, task_idx: str):
-    """After saving a task, offer to link it to an active goal if relevant."""
+async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: dict, task_idx: str,
+                                        context=None, saved_task_id: int | None = None):
+    """After saving a task, offer to link it to an active goal if relevant.
+
+    If context has pending_goal_id set (user said "add tasks to goal X"), auto-link silently.
+    """
     if task.get("goal_id"):
         return  # already linked
+    t = TEXTS[lang]
+
+    # Auto-link when user explicitly chose "add tasks" from goal completion prompt
+    if context is not None:
+        pending_goal_id = context.user_data.get("pending_goal_id")
+        if pending_goal_id:
+            if saved_task_id:
+                link_task_to_goal(saved_task_id, pending_goal_id)
+            active_goals = get_active_goals(chat_id)
+            goal_title = next((g["title"] for g in active_goals if g["id"] == pending_goal_id), "")
+            if goal_title:
+                await message.reply_text(
+                    t["goal_linked"].format(goal=goal_title), parse_mode="Markdown"
+                )
+            return
+
     active_goals = get_active_goals(chat_id)
     if not active_goals:
         return
@@ -2484,7 +2544,6 @@ async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: d
     )
     if not goal:
         return
-    t = TEXTS[lang]
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton(t["btn_goal_link_yes"], callback_data=f"goal_link_yes_{goal['id']}_{task_idx}"),
         InlineKeyboardButton(t["btn_goal_link_no"],  callback_data=f"goal_link_no_{task_idx}"),
