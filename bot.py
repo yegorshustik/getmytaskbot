@@ -22,7 +22,7 @@ from aiohttp import web
 from collections import defaultdict, deque
 import time as _time
 
-from landing import get_home_html, FAVICON_ICO, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
+from landing import get_home_html, FAVICON_ICO, FAVICON_PNG, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 
 load_dotenv()
 
@@ -2963,7 +2963,10 @@ async def home_page(request):
     lang = request.rel_url.query.get("lang", "en")
     if lang not in ("ru", "en", "uk"):
         lang = "en"
-    return web.Response(text=get_home_html(lang), content_type="text/html", charset="utf-8")
+    conn = sqlite3.connect("users.db")
+    user_count = conn.execute("SELECT COUNT(*) FROM users WHERE lang IS NOT NULL").fetchone()[0]
+    conn.close()
+    return web.Response(text=get_home_html(lang, user_count), content_type="text/html", charset="utf-8")
 
 async def google_verification(request):
     return web.Response(text="google-site-verification: googled2363927b56587ef.html", content_type="text/html", charset="utf-8")
@@ -2979,6 +2982,9 @@ async def llms_txt(request):
 
 async def favicon(request):
     return web.Response(body=FAVICON_ICO, content_type="image/x-icon")
+
+async def favicon_png(request):
+    return web.Response(body=FAVICON_PNG, content_type="image/png")
 
 async def stats_page(request):
     try:
@@ -3445,6 +3451,7 @@ async def start_web_server():
     app.router.add_get("/sitemap.xml", sitemap_xml)
     app.router.add_get("/llms.txt", llms_txt)
     app.router.add_get("/favicon.ico", favicon)
+    app.router.add_get("/favicon.png", favicon_png)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)

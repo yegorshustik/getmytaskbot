@@ -2,7 +2,7 @@
 landing.py — Get My Task landing page.
 
 Kept separate from bot.py so it survives refactors.
-Imported by bot.py: from landing import get_home_html, FAVICON_ICO, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
+Imported by bot.py: from landing import get_home_html, FAVICON_ICO, FAVICON_PNG, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 """
 import base64 as _b64
 
@@ -39,6 +39,36 @@ FAVICON_ICO: bytes = _b64.b64decode(
     "3uVmNehpDdD6wRnCsQ02+JvhQgOERwiOHzagaf5A14pOnIMga3TAAAAAElFTkSuQmCC"
 )
 
+# favicon.png — 192px PNG, works in Safari and all browsers
+FAVICON_PNG: bytes = _b64.b64decode(
+    "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"
+)
+
 _ICON_SVG = """<svg id="hero-icon" viewBox="0 0 501.5 500.3" xmlns="http://www.w3.org/2000/svg">
 <rect fill="#5D2362" width="501.5" height="500.3"/>
 <rect x="239.3" y="81.1" fill="#FAF06E" width="22" height="44"/>
@@ -72,6 +102,7 @@ _C = {
         "tagline": "AI-менеджер задач и целей",
         "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google Calendar",
         "cta": "Попробовать бесплатно →",
+        "social_proof": "Уже {n} пользователей управляют задачами",
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -142,6 +173,7 @@ _C = {
         "tagline": "AI Task & Goal Manager",
         "desc": "Voice notes and texts → tasks, goals & Google Calendar sync",
         "cta": "Try for free →",
+        "social_proof": "Join {n} people managing their tasks",
 
         "for_whom_title": "Who it's for",
         "personas": [
@@ -212,6 +244,7 @@ _C = {
         "tagline": "AI-менеджер задач і цілей",
         "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google Calendar",
         "cta": "Спробувати безкоштовно →",
+        "social_proof": "Вже {n} користувачів керують завданнями",
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -437,6 +470,7 @@ _CSS = """
       transition: background .15s, transform .1s;
     }
     .btn:hover { background: var(--purple-l); transform: translateY(-1px); }
+    .social-proof { margin-top: 14px; font-size: .88rem; color: var(--muted); opacity: .8; }
 
     /* Section titles */
     .section { margin-bottom: 56px; }
@@ -516,7 +550,7 @@ _CSS = """
 
 # ── Page builder ─────────────────────────────────────────────────────────────
 
-def _page(lang: str) -> str:
+def _page(lang: str, user_count: int = 0) -> str:
     from datetime import datetime as _dt
     c = _C[lang]
     year = _dt.now().year
@@ -550,7 +584,7 @@ def _page(lang: str) -> str:
   <meta name="twitter:card" content="summary"/>
   <meta name="twitter:title" content="Get My Task — {c['tagline']}"/>
   <meta name="twitter:description" content="{c['desc']}"/>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 501.5 500.3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect fill='%235D2362' width='501.5' height='500.3'/%3E%3Crect x='239.3' y='81.1' fill='%23FAF06E' width='22' height='44'/%3E%3Crect x='217.1' y='81.1' fill='%23FAF06E' width='66' height='22'/%3E%3Ccircle fill='%23FAF06E' cx='218.1' cy='92.1' r='11'/%3E%3Ccircle fill='%23FAF06E' cx='283.4' cy='92.1' r='11'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' fill='%23FAF06E' d='M406.7,250.7c-0.1-0.8-0.2-1.6-0.5-2.3l-33-87.9c-7.9-21.3-28.3-35.4-51-35.4L179.3,125c-22.7,0-43,14.1-51,35.4l-33,87.9c-0.3,0.7-0.5,1.5-0.6,2.3c0,0.5-0.1,1-0.1,1.5v72.7c0,30,24.3,54.4,54.4,54.4h203.5c30,0,54.4-24.3,54.4-54.4v-72.6C406.9,251.7,406.8,251.2,406.7,250.7zM148.6,168.1c4.8-12.7,17-21.2,30.6-21.2h143.1c13.6,0,25.8,8.4,30.6,21.2l27.2,73.3h-73.3c-5,0-9.3,3.4-10.5,8.2c-6.5,25.2-32.3,40.4-57.5,33.9c-16.6-4.3-29.6-17.3-33.9-33.9c-1.2-4.8-5.5-8.2-10.5-8.2h-73.3L148.6,168.1zM385,324.8c0,16.8-12.6,30.8-29.3,32.5l-3.4,0.2H149c-18,0-32.7-14.7-32.7-32.7V263h70.2c14.1,35.5,54.2,52.8,89.7,38.7c17.7-7,31.7-21,38.7-38.7H385V324.8z'/%3E%3Ccircle fill='%23FAF06E' cx='291.6' cy='195.1' r='31.7'/%3E%3Cpolygon fill='%235D2362' points='303.6,179.1 287.7,195.1 279.6,187 271.6,195 279.7,203.1 279.6,203.1 287.6,211.1 311.6,187.1'/%3E%3Ccircle fill='%23FAF06E' cx='209.9' cy='195.1' r='31.7'/%3E%3Cpolygon fill='%235D2362' points='228.5,189.4 215.5,189.4 215.5,176.5 204.3,176.5 204.3,189.4 191.3,189.4 191.3,200.7 204.3,200.7 204.3,213.7 215.5,213.7 215.5,200.7 228.5,200.7'/%3E%3C/svg%3E"/>
+  <link rel="icon" type="image/png" href="/favicon.png"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
 
   <!-- Schema.org JSON-LD -->
@@ -575,6 +609,7 @@ def _page(lang: str) -> str:
       <p class="tagline">{c['tagline']}</p>
       <p class="desc">{c['desc']}</p>
       <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
+      {f'<p class="social-proof">{c["social_proof"].format(n=user_count)}</p>' if user_count > 0 else ''}
     </section>
 
     <!-- For whom -->
@@ -623,7 +658,7 @@ def _page(lang: str) -> str:
       rc=document.getElementById('eye-right-check');
   if(!lp||!lc||!rp||!rc) return;
 
-  var phase=0, tid=null, stopTid=null, curMs=300;
+  var phase=0, tid=null, stopTid=null, curMs=200, running=false;
 
   function show(p){{
     phase=p;
@@ -631,34 +666,29 @@ def _page(lang: str) -> str:
     else      {{ lp.style.display='none'; lc.style.display=''; rp.style.display=''; rc.style.display='none'; }}
   }}
 
-  function resetStop(){{
-    clearTimeout(stopTid);
-    stopTid=setTimeout(function(){{ clearInterval(tid); tid=null; show(0); }}, 1500);
+  function tick(){{
+    show(phase===0?1:0);
+    tid=setTimeout(tick, curMs);
+  }}
+
+  function stop(){{
+    clearTimeout(tid); tid=null; running=false; show(0);
   }}
 
   function onV(v){{
-    if(v < 30) return;
-    // map velocity px/s → interval ms: fast(2000)→80ms, slow(30)→400ms
-    var ms=Math.round(400-Math.min(v,2000)/2000*320);
-    ms=Math.max(80, ms);
-    if(!tid){{
-      // start fresh interval
-      tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
-      curMs=ms;
-    }} else if(Math.abs(ms-curMs)>60){{
-      // speed changed significantly — restart with new interval
-      clearInterval(tid);
-      tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
-      curMs=ms;
-    }}
-    resetStop();
+    if(v < 50) return;
+    // map velocity px/s → delay ms: 50→350ms, 3000+→60ms
+    curMs=Math.round(Math.max(60, 350 - Math.min(v,3000)/3000*290));
+    clearTimeout(stopTid);
+    stopTid=setTimeout(stop, 1200);
+    if(!running){{ running=true; tick(); }}
   }}
 
   // Desktop: mouse speed
   var mx=0,my=0,mt=0;
   document.addEventListener('mousemove',function(e){{
     var now=Date.now(),dx=e.clientX-mx,dy=e.clientY-my,dt=now-mt;
-    if(dt>0&&dt<200) onV(Math.sqrt(dx*dx+dy*dy)/dt*1000);
+    if(dt>0&&dt<150) onV(Math.sqrt(dx*dx+dy*dy)/dt*1000);
     mx=e.clientX; my=e.clientY; mt=now;
   }});
 
@@ -666,7 +696,7 @@ def _page(lang: str) -> str:
   var sy=0,st=0;
   window.addEventListener('scroll',function(){{
     var now=Date.now(),ds=Math.abs(window.scrollY-sy),dt=now-st;
-    if(dt>0&&dt<200) onV(ds/dt*1000);
+    if(dt>0&&dt<150) onV(ds/dt*1000);
     sy=window.scrollY; st=now;
   }},{{passive:true}});
 }})();
@@ -756,7 +786,7 @@ SITEMAP_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def get_home_html(lang: str = "en") -> str:
+def get_home_html(lang: str = "en", user_count: int = 0) -> str:
     if lang not in _C:
         lang = "en"
-    return _page(lang)
+    return _page(lang, user_count)
