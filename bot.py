@@ -1286,27 +1286,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_text == "⚙️ Admin" and chat_id == BOT_OWNER_ID:
         await stats_command(update, context)
         return
-    # ── "When?" follow-up for tasks without date ─────────────────────────────
-    pending_when = context.user_data.get("pending_when_indices")
-    if pending_when is not None:
-        tz_name = user["timezone"] if user else "Europe/Moscow"
-        parsed = await parse_time_correction(user_text, lang, tz_name)
-        if parsed.get("error"):
-            await update.message.reply_text(TEXTS[lang]["ask_when_unclear"],
-                                            parse_mode="Markdown", reply_markup=_feedback_keyboard(lang))
-            return
-        tasks = context.user_data.get("tasks", [])
-        for idx in pending_when:
-            if idx < len(tasks):
-                if parsed.get("date"):
-                    tasks[idx]["suggested_date"] = parsed["date"]
-                if parsed.get("time"):
-                    tasks[idx]["suggested_time"] = parsed["time"]
-        context.user_data.pop("pending_when_indices", None)
-        tasks_to_show = [tasks[idx] for idx in pending_when if idx < len(tasks)]
-        await show_tasks(update, chat_id, tasks_to_show, lang, context=context, indices=pending_when)
-        return
-    # ── Goal creation state machine ───────────────────────────────────────────
+    # ── Goal creation state machine (checked FIRST — must not be interrupted) ───
     goal_step = context.user_data.get("goal_creation_step")
     if goal_step == "deadline":
         user_tz = user["timezone"] if user else "Europe/Moscow"
@@ -1339,6 +1319,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             parse_mode="Markdown"
         )
+        return
+    # ── "When?" follow-up for tasks without date ─────────────────────────────
+    pending_when = context.user_data.get("pending_when_indices")
+    if pending_when is not None:
+        tz_name = user["timezone"] if user else "Europe/Moscow"
+        parsed = await parse_time_correction(user_text, lang, tz_name)
+        if parsed.get("error"):
+            await update.message.reply_text(TEXTS[lang]["ask_when_unclear"],
+                                            parse_mode="Markdown", reply_markup=_feedback_keyboard(lang))
+            return
+        tasks = context.user_data.get("tasks", [])
+        for idx in pending_when:
+            if idx < len(tasks):
+                if parsed.get("date"):
+                    tasks[idx]["suggested_date"] = parsed["date"]
+                if parsed.get("time"):
+                    tasks[idx]["suggested_time"] = parsed["time"]
+        context.user_data.pop("pending_when_indices", None)
+        tasks_to_show = [tasks[idx] for idx in pending_when if idx < len(tasks)]
+        await show_tasks(update, chat_id, tasks_to_show, lang, context=context, indices=pending_when)
         return
     # ── Reschedule ────────────────────────────────────────────────────────────
     if "pending_task" in context.user_data:
@@ -1544,6 +1544,10 @@ async def _cb_goal(query, context, data: str, chat_id: int, lang: str):
     if data == "goal_confirm_yes":
         draft = context.user_data.get("goal_draft", {})
         await query.edit_message_reply_markup(reply_markup=None)
+        # Clear any stale states that could interfere with goal creation flow
+        context.user_data.pop("pending_when_indices", None)
+        context.user_data.pop("pending_task", None)
+        context.user_data.pop("tasks", None)
         if not (draft.get("deadline") and draft.get("criteria")):
             await query.message.reply_text(t["goal_onboarding"], parse_mode="Markdown")
         if draft.get("deadline") and draft.get("criteria"):
