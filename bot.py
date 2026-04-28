@@ -553,10 +553,16 @@ async def check_task_reminders():
                 if reminder_already_sent(chat_id, remind_key, sent_key):
                     continue
                 title_fmt = fmt_title(title, task_url)
+                t = TEXTS[lang]
+                reminder_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t["btn_reminder_done"], callback_data=f"rd_done_{task_id}"),
+                    InlineKeyboardButton(t["btn_reminder_reschedule"], callback_data=f"rd_mv_{task_id}"),
+                ]])
                 await bot_app.bot.send_message(
                     chat_id=chat_id,
-                    text=TEXTS[lang]["task_reminder"].format(title=title_fmt, time=time),
-                    parse_mode="Markdown"
+                    text=t["task_reminder"].format(title=title_fmt, time=time),
+                    parse_mode="Markdown",
+                    reply_markup=reminder_kb,
                 )
                 mark_reminder_sent(chat_id, remind_key, sent_key)
         except Exception as e:
@@ -2215,6 +2221,59 @@ async def _cb_move_task(query, context, data: str, chat_id: int, lang: str, user
     )
 
 
+async def _cb_reminder_action(query, context, data: str, chat_id: int, lang: str, user):
+    """Handle rd_done_<task_id> and rd_mv_<task_id> from reminder notification buttons."""
+    t = TEXTS[lang]
+    parts = data.split("_", 2)  # rd, done|mv, task_id
+    action = parts[1]
+    task_id = int(parts[2])
+
+    if action == "done":
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT title FROM tasks WHERE id=?", (task_id,)).fetchone()
+        conn.execute("UPDATE tasks SET done=1 WHERE id=?", (task_id,))
+        conn.commit()
+        conn.close()
+        title = row[0] if row else "?"
+        await query.edit_message_text(
+            t["reminder_task_done"].format(title=title), parse_mode="Markdown"
+        )
+        return
+
+    # action == "mv": show tomorrow / next-week quick-pick
+    conn = sqlite3.connect("users.db")
+    row = conn.execute("SELECT title, suggested_date, suggested_time FROM tasks WHERE id=?", (task_id,)).fetchone()
+    conn.close()
+    if not row:
+        await query.answer("Task not found.")
+        return
+    title, cur_date, cur_time = row
+    tz_name = user["timezone"] if user else "Europe/Moscow"
+    tz = ZoneInfo(tz_name)
+    today = datetime.now(tz).date()
+    tomorrow = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    next_week = (today + timedelta(days=7)).strftime("%Y-%m-%d")
+    time_part = cur_time or ""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                t["reminder_tomorrow"],
+                callback_data=f"mv_yes_{task_id}_{tomorrow}_{time_part}",
+            ),
+            InlineKeyboardButton(
+                t["reminder_next_week"],
+                callback_data=f"mv_yes_{task_id}_{next_week}_{time_part}",
+            ),
+        ],
+        [InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no")],
+    ]
+    await query.edit_message_text(
+        t["reminder_reschedule_prompt"].format(title=title),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
 # ── Main callback dispatcher ──────────────────────────────────────────────────
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2247,6 +2306,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_conflict(query, context, data, chat_id, lang, user)
     if data.startswith("mv_"):
         return await _cb_move_task(query, context, data, chat_id, lang, user)
+    if data.startswith("rd_"):
+        return await _cb_reminder_action(query, context, data, chat_id, lang, user)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
 
 
