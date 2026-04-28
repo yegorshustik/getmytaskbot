@@ -36,6 +36,7 @@ from db import (
     save_goal_to_db, get_active_goals, delete_goal_from_db, get_goal_progress,
     save_oauth_state, pop_oauth_state,
     find_upcoming_tasks, reschedule_task_in_db,
+    get_recurring_tasks_for_today,
 )
 from calendar_utils import (
     get_calendar_service_for_user, check_conflicts,
@@ -569,15 +570,21 @@ async def send_morning_digests():
             db = sqlite3.connect("users.db")
             # All tasks today (timed + untimed)
             today_rows = db.execute(
-                "SELECT title, suggested_time, task_url FROM tasks WHERE chat_id=? AND suggested_date=? ORDER BY suggested_time ASC NULLS LAST, id ASC",
+                "SELECT title, suggested_time, task_url FROM tasks WHERE chat_id=? AND suggested_date=? AND done=0 ORDER BY suggested_time ASC NULLS LAST, id ASC",
                 (chat_id, today)
             ).fetchall()
             # Future tasks (next 7 days, untimed only — timed ones get separate reminders)
             future_rows = db.execute(
-                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND suggested_date<=date(?,'+7 days') AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 7",
+                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND suggested_date<=date(?,'+7 days') AND done=0 AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 7",
                 (chat_id, today, today)
             ).fetchall() if not today_rows else []
             db.close()
+            # Merge recurring tasks for today (those not already present by title)
+            existing_titles = {r[0].lower() for r in today_rows}
+            recurring_today = get_recurring_tasks_for_today(chat_id, today)
+            for rt in recurring_today:
+                if rt["title"].lower() not in existing_titles:
+                    today_rows = list(today_rows) + [(rt["title"], rt["suggested_time"], None)]
 
             def _build_digest_block(rows_today, rows_future):
                 """Return formatted digest body with separate birthday / task sections."""

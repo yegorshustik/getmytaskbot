@@ -297,6 +297,29 @@ def link_task_to_goal(task_id: int, goal_id: int):
     conn.close()
 
 
+def get_recurring_tasks_for_today(chat_id: int, today: str) -> list[dict]:
+    """Return recurring tasks that fire on the given date based on their rrule."""
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        "SELECT title, rrule, suggested_time FROM recurring_tasks WHERE chat_id=?",
+        (chat_id,)
+    ).fetchall()
+    conn.close()
+    _WD = {0: "MO", 1: "TU", 2: "WE", 3: "TH", 4: "FR", 5: "SA", 6: "SU"}
+    today_wd = _WD[datetime.strptime(today, "%Y-%m-%d").weekday()]
+    result = []
+    for title, rrule, suggested_time in rows:
+        if not rrule:
+            continue
+        if "FREQ=DAILY" in rrule:
+            result.append({"title": title, "suggested_time": suggested_time or ""})
+        elif "FREQ=WEEKLY" in rrule and "BYDAY=" in rrule:
+            byday = rrule.split("BYDAY=")[1].split(";")[0]
+            if today_wd in byday.split(","):
+                result.append({"title": title, "suggested_time": suggested_time or ""})
+    return result
+
+
 def save_recurring_task_to_db(chat_id: int, title: str, event_id: str, rrule: str, time: str | None):
     conn = sqlite3.connect("users.db")
     conn.execute(
