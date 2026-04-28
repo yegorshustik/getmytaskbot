@@ -2,10 +2,7 @@ from __future__ import annotations
 import os
 import io
 import re
-import uuid
 import json
-import base64
-import hashlib
 import random
 import secrets
 import logging
@@ -18,10 +15,7 @@ from dotenv import load_dotenv
 from groq import Groq
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 
@@ -34,6 +28,19 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "114978994"))
+
+from db import (
+    init_db, log_event, get_user, save_user,
+    reminder_already_sent, mark_reminder_sent,
+    get_active_task_count, save_task_to_db, link_task_to_goal,
+    save_goal_to_db, get_active_goals, delete_goal_from_db, get_goal_progress,
+    save_oauth_state, pop_oauth_state,
+)
+from calendar_utils import (
+    get_calendar_service_for_user, check_conflicts,
+    add_to_calendar, add_recurring_to_calendar, describe_recurrence,
+    generate_ics, get_auth_url, SCOPES, get_tz_offset_str,
+)
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(level=logging.INFO)
@@ -76,8 +83,6 @@ def check_rate_limit(chat_id: int) -> bool:
         return False
     dq.append(now)
     return True
-
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # ─── Monitoring & Alerting ─────────────────────────────────────────────────────
 import shutil
@@ -167,197 +172,6 @@ async def monitor_system() -> None:
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 
-def init_db():
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            chat_id INTEGER PRIMARY KEY,
-            lang TEXT DEFAULT 'ru',
-            calendar_token TEXT,
-            first_task_done INTEGER DEFAULT 0,
-            calendar_connected INTEGER DEFAULT 0
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS sent_reminders (
-            chat_id INTEGER,
-            event_id TEXT,
-            remind_at TEXT,
-            PRIMARY KEY (chat_id, event_id, remind_at)
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            event_type TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at)")
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS oauth_states (
-            state TEXT PRIMARY KEY,
-            chat_id INTEGER,
-            code_verifier TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            title TEXT,
-            quadrant TEXT,
-            suggested_date TEXT,
-            suggested_time TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    for col, definition in [
-        ("timezone", "TEXT DEFAULT 'Europe/Moscow'"),
-        ("reminder_time", "TEXT DEFAULT '08:00'"),
-        ("reminder_enabled", "INTEGER DEFAULT 1"),
-        ("reminder_before", "INTEGER DEFAULT 30"),
-        ("reminder_minutes", "INTEGER DEFAULT 30"),
-        ("pending_task_json", "TEXT DEFAULT NULL"),
-        ("last_active", "TEXT DEFAULT NULL"),
-        ("ical_token", "TEXT DEFAULT NULL"),
-        ("last_reengagement", "TEXT DEFAULT NULL"),
-        ("reengagement_count", "INTEGER DEFAULT 0"),
-    ]:
-        try:
-            c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
-        except sqlite3.OperationalError:
-            pass
-    for col, definition in [
-        ("description", "TEXT DEFAULT ''"),
-        ("quadrant_name", "TEXT DEFAULT ''"),
-        ("done", "INTEGER DEFAULT 0"),
-        ("synced_to_calendar", "INTEGER DEFAULT 0"),
-        ("google_event_id", "TEXT DEFAULT NULL"),
-        ("task_url", "TEXT DEFAULT NULL"),
-        ("goal_id", "INTEGER DEFAULT NULL"),
-    ]:
-        try:
-            c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
-        except sqlite3.OperationalError:
-            pass
-    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(google_event_id)")
-    # ── Remove duplicate tasks ─────────────────────────────────────────────────
-    # Step 1: if a group has both a bot-created (no event_id) and a Calendar-synced row, drop the bot one
-    c.execute("""
-        DELETE FROM tasks
-        WHERE google_event_id IS NULL
-          AND (chat_id || '|' || title || '|' || suggested_date || '|' || COALESCE(suggested_time,'')) IN (
-              SELECT chat_id || '|' || title || '|' || suggested_date || '|' || COALESCE(suggested_time,'')
-              FROM tasks WHERE google_event_id IS NOT NULL
-          )
-    """)
-    # Step 2: for any remaining duplicates (both without event_id), keep the latest
-    c.execute("""
-        DELETE FROM tasks WHERE id NOT IN (
-            SELECT MAX(id) FROM tasks
-            GROUP BY chat_id, title, suggested_date, COALESCE(suggested_time, '')
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS goals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            title TEXT,
-            criteria TEXT,
-            deadline TEXT,
-            quadrant TEXT DEFAULT 'Q2',
-            quadrant_name TEXT DEFAULT '',
-            status TEXT DEFAULT 'active',
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS recurring_tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            title TEXT,
-            google_event_id TEXT,
-            rrule TEXT,
-            suggested_time TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    # Migrate oauth_states: add code_verifier column if missing
-    try:
-        c.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
-    except sqlite3.OperationalError:
-        pass
-    conn.commit()
-    conn.close()
-
-def log_event(chat_id, event_type):
-    conn = sqlite3.connect("users.db")
-    conn.execute("INSERT INTO events (chat_id, event_type) VALUES (?, ?)", (chat_id, event_type))
-    conn.execute("UPDATE users SET last_active=datetime('now') WHERE chat_id=?", (chat_id,))
-    conn.commit()
-    conn.close()
-
-def get_user(chat_id):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE chat_id = ?", (chat_id,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return {
-            "chat_id": row[0], "lang": row[1], "calendar_token": row[2],
-            "first_task_done": row[3], "calendar_connected": row[4],
-            "timezone": row[5] if len(row) > 5 and row[5] else "Europe/Moscow",
-            "reminder_time": row[6] if len(row) > 6 and row[6] else "08:00",
-            "reminder_enabled": row[7] if len(row) > 7 else 1,
-            "reminder_before": row[8] if len(row) > 8 and row[8] is not None else 30,
-            "reminder_minutes": row[9] if len(row) > 9 and row[9] is not None else 30,
-            "pending_task_json": row[10] if len(row) > 10 else None,
-            "last_active": row[11] if len(row) > 11 else None,
-            "ical_token": row[12] if len(row) > 12 else None,
-            "last_reengagement": row[13] if len(row) > 13 else None,
-            "reengagement_count": row[14] if len(row) > 14 else 0,
-        }
-    return None
-
-_ALLOWED_USER_COLS = {
-    "lang", "calendar_token", "first_task_done", "calendar_connected",
-    "timezone", "reminder_time", "reminder_enabled", "reminder_before",
-    "reminder_minutes", "pending_task_json", "last_active", "ical_token",
-    "last_reengagement", "reengagement_count",
-}
-
-def save_user(chat_id, **kwargs):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (chat_id) VALUES (?)", (chat_id,))
-    for key, val in kwargs.items():
-        if key not in _ALLOWED_USER_COLS:
-            logger.warning(f"save_user: ignoring unknown column '{key}'")
-            continue
-        c.execute(f"UPDATE users SET {key} = ? WHERE chat_id = ?", (val, chat_id))
-    conn.commit()
-    conn.close()
-
-def reminder_already_sent(chat_id, event_id, remind_at):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT 1 FROM sent_reminders WHERE chat_id=? AND event_id=? AND remind_at=?",
-              (chat_id, event_id, remind_at))
-    result = c.fetchone()
-    conn.close()
-    return result is not None
-
-def mark_reminder_sent(chat_id, event_id, remind_at):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO sent_reminders VALUES (?,?,?)", (chat_id, event_id, remind_at))
-    conn.commit()
-    conn.close()
 
 from texts import TEXTS, _FEEDBACK_MAX_TEXT_LEN
 
@@ -381,18 +195,6 @@ def get_menu_hint(lang: str) -> str:
     hints = TEXTS.get(lang, TEXTS["ru"]).get("menu_hint", [])
     return random.choice(hints) if hints else "Надиктуйте или опишите задачу:"
 
-
-def get_active_task_count(chat_id):
-    conn = sqlite3.connect("users.db")
-    user = get_user(chat_id)
-    tz_name = user["timezone"] if user else "Europe/Moscow"
-    today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
-    count = conn.execute(
-        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date = ? AND done=0",
-        (chat_id, today)
-    ).fetchone()[0]
-    conn.close()
-    return count
 
 def main_menu_keyboard(lang: str, calendar_connected: bool, task_count: int = 0, chat_id: int = 0) -> ReplyKeyboardMarkup:
     t = TEXTS[lang]
@@ -439,156 +241,6 @@ Return ONLY a valid JSON array. No explanations.""",
 
 # ─── Google Calendar ──────────────────────────────────────────────────────────
 
-def get_calendar_service_for_user(chat_id):
-    user = get_user(chat_id)
-    if not user or not user["calendar_token"]:
-        return None
-    creds = Credentials.from_authorized_user_info(json.loads(user["calendar_token"]), SCOPES)
-    if creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            save_user(chat_id, calendar_token=creds.to_json())
-        except Exception as e:
-            logger.error(f"Token refresh failed for {chat_id}: {e}")
-            save_user(chat_id, calendar_token=None, calendar_connected=0)
-            return None
-    return build("calendar", "v3", credentials=creds)
-
-def check_conflicts(service, date, time, timezone="Europe/Moscow"):
-    if not time:
-        return []
-    try:
-        offset = get_tz_offset_str(timezone)
-        start_dt = datetime.fromisoformat(f"{date}T{time}:00")
-        end_dt = start_dt + timedelta(minutes=30)
-        time_min = start_dt.strftime(f"%Y-%m-%dT%H:%M:%S{offset}")
-        time_max = end_dt.strftime(f"%Y-%m-%dT%H:%M:%S{offset}")
-        result = service.events().list(
-            calendarId="primary",
-            timeMin=time_min,
-            timeMax=time_max,
-            singleEvents=True,
-        ).execute()
-        # Только события с конкретным временем — целодневные игнорируем
-        timed_events = [
-            e for e in result.get("items", [])
-            if "dateTime" in e.get("start", {})
-        ]
-        return timed_events
-    except Exception as e:
-        logger.error(f"Conflict check error: {e}")
-        return []
-
-def add_to_calendar(chat_id, task):
-    service = get_calendar_service_for_user(chat_id)
-    if not service:
-        return None
-    user = get_user(chat_id)
-    tz_name = user["timezone"] if user else "Europe/Moscow"
-    reminder_mins = user.get("reminder_minutes", 30) if user else 30
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
-    time = task.get("suggested_time")
-    if time:
-        start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
-        end_dt = start_dt + timedelta(minutes=30)
-        end_date = end_dt.strftime("%Y-%m-%d")
-        start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
-        end = {"dateTime": f"{end_date}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
-    else:
-        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-        start = {"date": date}
-        end = {"date": next_day}
-    event = {
-        "summary": task["title"],
-        "description": f"{task['description']}\n\n{task['quadrant']} — {task['quadrant_name']}\n{task['reason']}",
-        "start": start,
-        "end": end,
-        "reminders": {
-            "useDefault": False,
-            "overrides": [{"method": "popup", "minutes": reminder_mins}]
-        }
-    }
-    result = service.events().insert(calendarId="primary", body=event).execute()
-    task_id = save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
-    return result.get("htmlLink"), task_id
-
-def describe_recurrence(recurrence: dict, lang: str) -> str:
-    t = TEXTS[lang]
-    freq = recurrence.get("freq", "DAILY")
-    days = recurrence.get("days", [])
-    if freq == "DAILY":
-        return t["recurring_schedule_daily"]
-    if freq == "WEEKLY":
-        names = t.get("recurring_day_names", {})
-        day_str = ", ".join(names.get(d, d) for d in days) if days else t["recurring_schedule_daily"]
-        return t["recurring_schedule_weekly"].format(days=day_str)
-    logger.warning(f"describe_recurrence: unknown freq '{freq}'")
-    return freq.lower()
-
-def add_recurring_to_calendar(chat_id, task):
-    service = get_calendar_service_for_user(chat_id)
-    if not service:
-        return None, None
-    user = get_user(chat_id)
-    tz_name = user["timezone"] if user else "Europe/Moscow"
-    reminder_mins = user.get("reminder_minutes", 30) if user else 30
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
-    time = task.get("suggested_time")
-    recurrence_obj = task.get("recurrence", {})
-    freq = recurrence_obj.get("freq", "DAILY")
-    days = recurrence_obj.get("days", [])
-    rrule = f"RRULE:FREQ={freq}" + (f";BYDAY={','.join(days)}" if days else "")
-    if time:
-        start_dt = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M")
-        end_dt = start_dt + timedelta(minutes=30)
-        start = {"dateTime": f"{date}T{time}:00", "timeZone": tz_name}
-        end = {"dateTime": f"{end_dt.strftime('%Y-%m-%d')}T{end_dt.strftime('%H:%M')}:00", "timeZone": tz_name}
-    else:
-        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-        start = {"date": date}
-        end = {"date": next_day}
-    event = {
-        "summary": task["title"],
-        "description": task.get("description", ""),
-        "start": start,
-        "end": end,
-        "recurrence": [rrule],
-        "reminders": {
-            "useDefault": False,
-            "overrides": [{"method": "popup", "minutes": reminder_mins}]
-        }
-    }
-    result = service.events().insert(calendarId="primary", body=event).execute()
-    event_id = result.get("id")
-    conn = sqlite3.connect("users.db")
-    conn.execute(
-        "INSERT INTO recurring_tasks (chat_id, title, google_event_id, rrule, suggested_time) VALUES (?,?,?,?,?)",
-        (chat_id, task["title"], event_id, rrule, time)
-    )
-    conn.commit()
-    conn.close()
-    save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=event_id)
-    return event_id, result.get("htmlLink")
-
-def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
-    conn = sqlite3.connect("users.db")
-    cur = conn.execute(
-        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url, goal_id) VALUES (?,?,?,?,?,?,?,0,?,?,?,?)",
-        (chat_id, task["title"], task.get("description",""), task.get("quadrant",""), task.get("quadrant_name",""),
-         task.get("suggested_date",""), task.get("suggested_time",""), synced_to_calendar, google_event_id,
-         task.get("url") or task.get("task_url"), task.get("goal_id"))
-    )
-    conn.commit()
-    task_id = cur.lastrowid
-    conn.close()
-    return task_id
-
-def link_task_to_goal(task_id: int, goal_id: int):
-    """Update an already-saved task row to link it to a goal (no duplicate insert)."""
-    conn = sqlite3.connect("users.db")
-    conn.execute("UPDATE tasks SET goal_id=? WHERE id=?", (goal_id, task_id))
-    conn.commit()
-    conn.close()
 
 # ─── Time correction parser ───────────────────────────────────────────────────
 
@@ -618,50 +270,6 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
         return {"error": "unclear"}
 
 # ─── OAuth ────────────────────────────────────────────────────────────────────
-
-def save_oauth_state(state, chat_id, code_verifier=None):
-    conn = sqlite3.connect("users.db")
-    conn.execute("DELETE FROM oauth_states WHERE created_at < datetime('now', '-1 hour')")  # cleanup old
-    conn.execute(
-        "INSERT OR REPLACE INTO oauth_states (state, chat_id, code_verifier) VALUES (?, ?, ?)",
-        (state, chat_id, code_verifier)
-    )
-    conn.commit()
-    conn.close()
-
-def pop_oauth_state(state):
-    """Returns (chat_id, code_verifier) for state and deletes it, or (None, None) if not found."""
-    conn = sqlite3.connect("users.db")
-    row = conn.execute("SELECT chat_id, code_verifier FROM oauth_states WHERE state=?", (state,)).fetchone()
-    if row:
-        conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
-        conn.commit()
-    conn.close()
-    return (row[0], row[1]) if row else (None, None)
-
-def _pkce_pair():
-    """Generate a PKCE code_verifier and corresponding S256 code_challenge."""
-    verifier = base64.urlsafe_b64encode(secrets.token_bytes(96)).rstrip(b"=").decode()
-    digest = hashlib.sha256(verifier.encode()).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return verifier, challenge
-
-def get_auth_url(chat_id):
-    flow = Flow.from_client_secrets_file(
-        "credentials.json",
-        scopes=SCOPES,
-        redirect_uri=f"{BASE_URL}/oauth/callback"
-    )
-    code_verifier, code_challenge = _pkce_pair()
-    auth_url, state = flow.authorization_url(
-        access_type="offline",
-        prompt="consent",
-        include_granted_scopes="true",
-        code_challenge=code_challenge,
-        code_challenge_method="S256",
-    )
-    save_oauth_state(state, chat_id, code_verifier=code_verifier)
-    return auth_url
 
 
 # ─── Reminders ────────────────────────────────────────────────────────────────
@@ -1143,14 +751,6 @@ POPULAR_TIMEZONES = [
     ("UTC+12 Auckland",     "Pacific/Auckland"),
 ]
 
-def get_tz_offset_str(tz_name: str) -> str:
-    tz = ZoneInfo(tz_name)
-    offset = datetime.now(tz).utcoffset()
-    total = int(offset.total_seconds())
-    sign = "+" if total >= 0 else "-"
-    total = abs(total)
-    h, m = divmod(total // 60, 60)
-    return f"{sign}{h:02d}:{m:02d}"
 
 _MONTHS = {
     "ru": ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
@@ -1269,43 +869,6 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
     text = "\n\n".join(blocks)
     return text
 
-def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
-    time = task.get("suggested_time")
-    title = task.get("title", "Task").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
-    description = task.get("reason", "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
-    now_utc = datetime.now(_utc.utc).strftime("%Y%m%dT%H%M%SZ")
-    uid = str(uuid.uuid4())
-
-    if time:
-        tz = ZoneInfo(tz_name)
-        dt_start = datetime.strptime(f"{date}T{time}", "%Y-%m-%dT%H:%M").replace(tzinfo=tz)
-        dt_end = dt_start + timedelta(minutes=30)
-        fmt = "%Y%m%dT%H%M%S"
-        dtstart_line = f"DTSTART;TZID={tz_name}:{dt_start.strftime(fmt)}"
-        dtend_line = f"DTEND;TZID={tz_name}:{dt_end.strftime(fmt)}"
-    else:
-        next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y%m%d")
-        dtstart_line = f"DTSTART;VALUE=DATE:{date.replace('-', '')}"
-        dtend_line = f"DTEND;VALUE=DATE:{next_day}"
-
-    ics = (
-        "BEGIN:VCALENDAR\r\n"
-        "VERSION:2.0\r\n"
-        "PRODID:-//Get My Task//EN\r\n"
-        "CALSCALE:GREGORIAN\r\n"
-        "METHOD:PUBLISH\r\n"
-        "BEGIN:VEVENT\r\n"
-        f"UID:{uid}\r\n"
-        f"DTSTAMP:{now_utc}\r\n"
-        f"{dtstart_line}\r\n"
-        f"{dtend_line}\r\n"
-        f"SUMMARY:{title}\r\n"
-        f"DESCRIPTION:{description}\r\n"
-        "END:VEVENT\r\n"
-        "END:VCALENDAR\r\n"
-    )
-    return ics.encode("utf-8")
 
 async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
     """Show task cards.
@@ -2661,52 +2224,6 @@ async def _offer_goal_link_if_relevant(message, chat_id: int, lang: str, task: d
     )
 
 
-def save_goal_to_db(chat_id: int, title: str, criteria: str, deadline: str,
-                    quadrant: str = "Q2", quadrant_name: str = "") -> int:
-    conn = sqlite3.connect("users.db")
-    cur = conn.execute(
-        "INSERT INTO goals (chat_id, title, criteria, deadline, quadrant, quadrant_name) VALUES (?,?,?,?,?,?)",
-        (chat_id, title, criteria, deadline, quadrant, quadrant_name)
-    )
-    goal_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return goal_id
-
-def get_active_goals(chat_id: int) -> list[dict]:
-    conn = sqlite3.connect("users.db")
-    rows = conn.execute(
-        "SELECT id, title, criteria, deadline, quadrant, quadrant_name, status FROM goals WHERE chat_id=? AND status='active' ORDER BY created_at DESC",
-        (chat_id,)
-    ).fetchall()
-    conn.close()
-    return [{"id": r[0], "title": r[1], "criteria": r[2], "deadline": r[3],
-             "quadrant": r[4], "quadrant_name": r[5], "status": r[6]} for r in rows]
-
-def delete_goal_from_db(goal_id: int, delete_tasks: bool) -> int:
-    """Delete a goal (set status='deleted') and handle linked tasks.
-    If delete_tasks=True, deletes all linked tasks.
-    If delete_tasks=False, unlinks them (goal_id=NULL).
-    Returns count of affected tasks."""
-    conn = sqlite3.connect("users.db")
-    n = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=?", (goal_id,)).fetchone()[0]
-    if delete_tasks:
-        conn.execute("DELETE FROM tasks WHERE goal_id=?", (goal_id,))
-    else:
-        conn.execute("UPDATE tasks SET goal_id=NULL WHERE goal_id=?", (goal_id,))
-    conn.execute("UPDATE goals SET status='deleted' WHERE id=?", (goal_id,))
-    conn.commit()
-    conn.close()
-    return n
-
-def get_goal_progress(goal_id: int) -> tuple[int, int]:
-    """Returns (done_count, total_count) for tasks linked to this goal."""
-    conn = sqlite3.connect("users.db")
-    total = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=?", (goal_id,)).fetchone()[0]
-    done = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=? AND done=1", (goal_id,)).fetchone()[0]
-    conn.close()
-    return done, total
-
 def _progress_bar(pct: int, length: int = 8) -> str:
     filled = round(pct / 100 * length)
     return "█" * filled + "░" * (length - filled)
@@ -3564,6 +3081,7 @@ async def start_web_server():
 async def main():
     global bot_app
     init_db()
+    import calendar_utils as _cu; _cu.init(BASE_URL)
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("connect", connect_command))
