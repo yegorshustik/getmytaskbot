@@ -2155,31 +2155,32 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if chat_id != BOT_OWNER_ID:
         return
-    s = get_stats_data()
-    # Build reminders-off list
-    off_ids = s.get("reminders_off_ids", [])
+    s1  = get_stats_data(days=1)
+    s7  = get_stats_data(days=7)
+    s30 = get_stats_data(days=30)
+    off_ids = s7.get("reminders_off_ids", [])
     if off_ids:
         off_lines = "\n".join(f"  • `{uid}`" for uid in off_ids)
-        reminders_off_block = f"\n*🔕 Отключили уведомления ({len(off_ids)}):*\n{off_lines}"
+        reminders_off_block = f"\n\n*🔕 Отключили уведомления ({len(off_ids)}):*\n{off_lines}"
     else:
-        reminders_off_block = "\n*🔕 Отключили уведомления:* нет"
+        reminders_off_block = "\n\n*🔕 Отключили уведомления:* нет"
     text = (
         "📊 *Статистика Get My Task*\n\n"
-        f"👥 Всего пользователей: *{s['total_users']}*\n"
-        f"📅 С Google Calendar: *{s['cal_users']}*\n\n"
+        f"👥 Всего пользователей: *{s7['total_users']}*\n"
+        f"📅 С Google Calendar: *{s7['cal_users']}*\n\n"
         f"*Активность:*\n"
-        f"• DAU (сегодня): *{s['dau']}*\n"
-        f"• WAU (7 дней): *{s['wau']}*\n"
-        f"• MAU (30 дней): *{s['mau']}*\n\n"
+        f"• DAU (сегодня): *{s1['dau']}*\n"
+        f"• WAU (7 дней): *{s7['active']}*\n"
+        f"• MAU (30 дней): *{s30['active']}*\n\n"
         f"*Новые пользователи:*\n"
-        f"• Сегодня: *{s['new_today']}*\n"
-        f"• За 7 дней: *{s['new_week']}*\n\n"
+        f"• Сегодня: *{s1['new_users']}*\n"
+        f"• За 7 дней: *{s7['new_users']}*\n\n"
         f"*Задачи созданы:*\n"
-        f"• Сегодня: *{s['tasks_today']}*\n"
-        f"• За 7 дней: *{s['tasks_week']}*\n\n"
+        f"• Сегодня: *{s1['tasks_total']}*\n"
+        f"• За 7 дней: *{s7['tasks_total']}*\n\n"
         f"*Голосовые:*\n"
-        f"• Сегодня: *{s['voice_today']}*\n"
-        f"• За 7 дней: *{s['voice_week']}*"
+        f"• Сегодня: *{s1['voice_total']}*\n"
+        f"• За 7 дней: *{s7['voice_total']}*"
         + reminders_off_block
     )
     await update.message.reply_text(text, parse_mode="Markdown")
