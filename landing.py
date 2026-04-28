@@ -33,7 +33,7 @@ _C = {
         "lang_html": "ru",
         "tagline": "AI-менеджер задач и целей",
         "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google Calendar",
-        "cta": "@getmytask_bot",
+        "cta": "Попробовать бесплатно →",
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -92,7 +92,7 @@ _C = {
         "lang_html": "en",
         "tagline": "AI Task & Goal Manager",
         "desc": "Voice notes and texts → tasks, goals & Google Calendar sync",
-        "cta": "@getmytask_bot",
+        "cta": "Try for free →",
 
         "for_whom_title": "Who it's for",
         "personas": [
@@ -151,7 +151,7 @@ _C = {
         "lang_html": "uk",
         "tagline": "AI-менеджер задач і цілей",
         "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google Calendar",
-        "cta": "@getmytask_bot",
+        "cta": "Спробувати безкоштовно →",
 
         "for_whom_title": "Для кого",
         "personas": [
