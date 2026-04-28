@@ -543,7 +543,7 @@ async def check_task_reminders():
                 """SELECT id, title, suggested_date, suggested_time, task_url FROM tasks
                    WHERE chat_id=?
                    AND suggested_time IS NOT NULL
-                   AND synced_to_calendar = 0
+                   AND done=0
                    AND (suggested_date > ? OR (suggested_date = ? AND suggested_time >= ?))
                    AND (suggested_date < ? OR (suggested_date = ? AND suggested_time <= ?))""",
                 (chat_id, lo_date, lo_date, lo_time, hi_date, hi_date, hi_time)
