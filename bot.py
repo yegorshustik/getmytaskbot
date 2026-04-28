@@ -1080,9 +1080,24 @@ async def process_and_show(update, context, text, chat_id, lang):
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
 
+def _save_user_profile(update: Update):
+    """Persist first_name and username from every update so stats can show real names."""
+    tg_user = update.effective_user
+    if not tg_user:
+        return
+    kwargs = {}
+    if tg_user.first_name:
+        kwargs["first_name"] = tg_user.first_name
+    if tg_user.username:
+        kwargs["username"] = tg_user.username
+    if kwargs:
+        save_user(tg_user.id, **kwargs)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     save_user(chat_id)
+    _save_user_profile(update)
     user = get_user(chat_id)
     if user and user["lang"]:
         lang = user["lang"]
@@ -1145,6 +1160,7 @@ async def _send_feedback_to_owner(update: Update, context: ContextTypes.DEFAULT_
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    _save_user_profile(update)
     user = get_user(chat_id)
     if not user or not user["lang"]:
         await start(update, context)
@@ -1274,6 +1290,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    _save_user_profile(update)
     logger.info(f"handle_voice called for chat_id={chat_id}")
     user = get_user(chat_id)
     if not user or not user["lang"]:
@@ -2121,9 +2138,9 @@ def get_stats_data(days=7):
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
     text_total  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='text_task' AND created_at >= ?", (since,)).fetchone()[0]
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
-    # All users list: chat_id, lang, calendar_connected, last_active — sorted by last_active desc
+    # All users list — sorted by last_active desc
     all_users   = conn.execute(
-        "SELECT chat_id, lang, calendar_connected, last_active FROM users "
+        "SELECT chat_id, lang, calendar_connected, last_active, first_name, username FROM users "
         "WHERE lang IS NOT NULL ORDER BY last_active DESC NULLS LAST"
     ).fetchall()
     # Chart data
@@ -2177,12 +2194,17 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Users list ────────────────────────────────────────────────────────────
     all_users = s7.get("all_users", [])
-    cal_icon = {0: "·", 1: "📅"}
     user_lines = []
-    for uid, lang, cal, last_active in all_users:
+    for uid, lang, cal, last_active, first_name, username in all_users:
         la = last_active[:10] if last_active else "—"
-        icon = cal_icon.get(cal, "·")
-        user_lines.append(f"  {icon} `{uid}` ({lang}) — {la}")
+        cal_mark = " 📅" if cal else ""
+        if username:
+            display = f"@{username}"
+        elif first_name:
+            display = first_name
+        else:
+            display = f"`{uid}`"
+        user_lines.append(f"• {display}{cal_mark} — {la}")
     users_block = "\n".join(user_lines) if user_lines else "  нет"
 
     text = (
@@ -2205,7 +2227,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
     # Send users list as separate message (can be long)
-    users_text = f"*👥 Все пользователи ({len(all_users)}):*\n`📅` = Google Calendar подключён\n\n" + users_block
+    users_text = f"*👥 Все пользователи ({len(all_users)}):*\n📅 = Google Calendar подключён\n\n" + users_block
     # Telegram limit 4096 chars — split if needed
     for i in range(0, len(users_text), 4000):
         await update.message.reply_text(users_text[i:i+4000], parse_mode="Markdown")

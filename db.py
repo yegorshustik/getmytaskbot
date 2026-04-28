@@ -74,6 +74,8 @@ def init_db():
         ("ical_token", "TEXT DEFAULT NULL"),
         ("last_reengagement", "TEXT DEFAULT NULL"),
         ("reengagement_count", "INTEGER DEFAULT 0"),
+        ("first_name", "TEXT DEFAULT NULL"),
+        ("username", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -170,6 +172,8 @@ def get_user(chat_id):
             "ical_token": row[12] if len(row) > 12 else None,
             "last_reengagement": row[13] if len(row) > 13 else None,
             "reengagement_count": row[14] if len(row) > 14 else 0,
+            "first_name": row[15] if len(row) > 15 else None,
+            "username": row[16] if len(row) > 16 else None,
         }
     return None
 
@@ -179,6 +183,7 @@ _ALLOWED_USER_COLS = {
     "timezone", "reminder_time", "reminder_enabled", "reminder_before",
     "reminder_minutes", "pending_task_json", "last_active", "ical_token",
     "last_reengagement", "reengagement_count",
+    "first_name", "username",
 }
 
 
