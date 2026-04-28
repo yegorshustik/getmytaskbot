@@ -39,7 +39,7 @@ FAVICON_ICO: bytes = _b64.b64decode(
     "3uVmNehpDdD6wRnCsQ02+JvhQgOERwiOHzagaf5A14pOnIMga3TAAAAAElFTkSuQmCC"
 )
 
-_ICON_SVG = """<svg viewBox="0 0 501.5 500.3" xmlns="http://www.w3.org/2000/svg">
+_ICON_SVG = """<svg id="hero-icon" viewBox="0 0 501.5 500.3" xmlns="http://www.w3.org/2000/svg">
 <rect fill="#5D2362" width="501.5" height="500.3"/>
 <rect x="239.3" y="81.1" fill="#FAF06E" width="22" height="44"/>
 <rect x="217.1" y="81.1" fill="#FAF06E" width="66" height="22"/>
@@ -53,11 +53,15 @@ _ICON_SVG = """<svg viewBox="0 0 501.5 500.3" xmlns="http://www.w3.org/2000/svg"
   c-16.6-4.3-29.6-17.3-33.9-33.9c-1.2-4.8-5.5-8.2-10.5-8.2h-73.3L148.6,168.1z M385,324.8
   c0,16.8-12.6,30.8-29.3,32.5l-3.4,0.2H149c-18,0-32.7-14.7-32.7-32.7V263h70.2
   c14.1,35.5,54.2,52.8,89.7,38.7c17.7-7,31.7-21,38.7-38.7H385V324.8z"/>
+<!-- Right eye: default=checkmark, alt=plus -->
 <circle fill="#FAF06E" cx="291.6" cy="195.1" r="31.7"/>
-<polygon fill="#5D2362" points="303.6,179.1 287.7,195.1 279.6,187 271.6,195 279.7,203.1 279.6,203.1 287.6,211.1 311.6,187.1"/>
+<polygon id="eye-right-check" fill="#5D2362" points="303.6,179.1 287.7,195.1 279.6,187 271.6,195 279.7,203.1 279.6,203.1 287.6,211.1 311.6,187.1"/>
+<polygon id="eye-right-plus" fill="#5D2362" style="display:none" points="310.2,189.4 297.2,189.4 297.2,176.5 286.0,176.5 286.0,189.4 273.0,189.4 273.0,200.7 286.0,200.7 286.0,213.7 297.2,213.7 297.2,200.7 310.2,200.7"/>
+<!-- Left eye: default=plus, alt=checkmark -->
 <circle fill="#FAF06E" cx="209.9" cy="195.1" r="31.7"/>
-<polygon fill="#5D2362" points="228.5,189.4 215.5,189.4 215.5,176.5 204.3,176.5 204.3,189.4 191.3,189.4
+<polygon id="eye-left-plus" fill="#5D2362" points="228.5,189.4 215.5,189.4 215.5,176.5 204.3,176.5 204.3,189.4 191.3,189.4
   191.3,200.7 204.3,200.7 204.3,213.7 215.5,213.7 215.5,200.7 228.5,200.7"/>
+<polygon id="eye-left-check" fill="#5D2362" style="display:none" points="221.9,179.1 206.0,195.1 197.9,187 189.9,195 198.0,203.1 197.9,203.1 205.9,211.1 229.9,187.1"/>
 </svg>"""
 
 # ── Copy ─────────────────────────────────────────────────────────────────────
@@ -609,6 +613,53 @@ def _page(lang: str) -> str:
     </div>
     <div class="footer-copy">© {year} Get My Task. All rights reserved.</div>
   </footer>
+
+<script>
+(function(){{
+  var lp=document.getElementById('eye-left-plus'),
+      lc=document.getElementById('eye-left-check'),
+      rp=document.getElementById('eye-right-plus'),
+      rc=document.getElementById('eye-right-check');
+  if(!lp||!lc||!rp||!rc) return;
+
+  var phase=0, tid=null, stopTid=null;
+
+  function show(p){{
+    phase=p;
+    if(p===0){{ lp.style.display=''; lc.style.display='none'; rp.style.display='none'; rc.style.display=''; }}
+    else      {{ lp.style.display='none'; lc.style.display=''; rp.style.display=''; rc.style.display='none'; }}
+  }}
+
+  function run(ms){{
+    clearInterval(tid);
+    tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
+    clearTimeout(stopTid);
+    stopTid=setTimeout(function(){{ clearInterval(tid); show(0); }}, 600);
+  }}
+
+  function onV(v){{
+    // v in px/s; map 0→800ms, 2000+→80ms
+    var ms=Math.round(800-Math.min(v,2000)/2000*720);
+    run(ms);
+  }}
+
+  // Desktop: mouse speed
+  var mx=0,my=0,mt=0;
+  document.addEventListener('mousemove',function(e){{
+    var now=Date.now(),dx=e.clientX-mx,dy=e.clientY-my,dt=now-mt;
+    if(dt>0) onV(Math.sqrt(dx*dx+dy*dy)/dt*1000);
+    mx=e.clientX; my=e.clientY; mt=now;
+  }});
+
+  // Mobile: scroll speed
+  var sy=0,st=0;
+  window.addEventListener('scroll',function(){{
+    var now=Date.now(),ds=Math.abs(window.scrollY-sy),dt=now-st;
+    if(dt>0) onV(ds/dt*1000);
+    sy=window.scrollY; st=now;
+  }},{{passive:true}});
+}})();
+</script>
 
 </body>
 </html>"""
