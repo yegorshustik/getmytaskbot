@@ -22,7 +22,7 @@ from aiohttp import web
 from collections import defaultdict, deque
 import time as _time
 
-from landing import get_home_html
+from landing import get_home_html, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 
 load_dotenv()
 
@@ -2956,6 +2956,15 @@ async def home_page(request):
 async def google_verification(request):
     return web.Response(text="google-site-verification: googled2363927b56587ef.html", content_type="text/html", charset="utf-8")
 
+async def robots_txt(request):
+    return web.Response(text=ROBOTS_TXT, content_type="text/plain", charset="utf-8")
+
+async def sitemap_xml(request):
+    return web.Response(text=SITEMAP_XML, content_type="application/xml", charset="utf-8")
+
+async def llms_txt(request):
+    return web.Response(text=LLMS_TXT, content_type="text/plain", charset="utf-8")
+
 async def stats_page(request):
     try:
         days = int(request.rel_url.query.get("days", 7))
@@ -3417,6 +3426,9 @@ async def start_web_server():
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
     app.router.add_get("/privacy", privacy_policy)
+    app.router.add_get("/robots.txt", robots_txt)
+    app.router.add_get("/sitemap.xml", sitemap_xml)
+    app.router.add_get("/llms.txt", llms_txt)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)
