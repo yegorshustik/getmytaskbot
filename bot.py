@@ -2621,8 +2621,14 @@ async def _translate_announce(text_ru: str, lang: str) -> str:
                 "role": "user",
                 "content": (
                     f"Translate this Telegram bot update notification from Russian to {lang_name}. "
-                    "Keep it short, friendly and action-oriented. Preserve emojis and Markdown formatting (*bold*, _italic_). "
-                    "Return ONLY the translated text, nothing else:\n\n" + text_ru
+                    "Keep it short, friendly and action-oriented. "
+                    "CRITICAL rules you MUST follow:\n"
+                    "1. Preserve ALL newlines exactly — do NOT merge lines or paragraphs.\n"
+                    "2. Every *word* wrapped in asterisks must stay wrapped in asterisks in translation.\n"
+                    "3. Every _word_ wrapped in underscores must stay wrapped in underscores.\n"
+                    "4. Preserve all emojis in exact position.\n"
+                    "5. Return ONLY the translated text — no explanations, no quotes.\n\n"
+                    "Text to translate:\n\n" + text_ru
                 )
             }],
             max_tokens=400,
@@ -2647,7 +2653,9 @@ async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    text_ru = " ".join(context.args)
+    # Preserve newlines by taking raw message text after the command
+    raw = update.message.text or ""
+    text_ru = raw.split(None, 1)[1] if " " in raw or "\n" in raw else " ".join(context.args)
     msg = await update.message.reply_text("⏳ Перевожу на другие языки...")
 
     text_en = await _translate_announce(text_ru, "en")
