@@ -70,6 +70,14 @@ def check_feedback_cooldown(chat_id: int) -> tuple[bool, int]:
 def mark_feedback_sent(chat_id: int):
     _feedback_last_sent[chat_id] = _time.monotonic()
 
+
+def _feedback_keyboard(lang: str) -> InlineKeyboardMarkup:
+    """Single-button keyboard with 'Write to us' that triggers the feedback flow."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(TEXTS[lang]["btn_feedback"], callback_data="settings_feedback")
+    ]])
+
+
 # ─── Rate Limiting ─────────────────────────────────────────────────────────────
 _RATE_LIMIT_MAX = 10       # max AI requests
 _RATE_LIMIT_WINDOW = 60    # per N seconds
@@ -1060,7 +1068,7 @@ async def process_and_show_from_callback(query, context, text, chat_id, lang):
     tz_name = user["timezone"] if user else "Europe/Moscow"
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
-        await query.message.reply_text(TEXTS[lang]["no_tasks"])
+        await query.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
         return
     valid_tasks = []
     for task in tasks:
@@ -1113,7 +1121,7 @@ async def process_and_show(update, context, text, chat_id, lang):
         return
     tasks = await process_text(text, lang, tz_name)
     if not tasks:
-        await update.message.reply_text(TEXTS[lang]["no_tasks"])
+        await update.message.reply_text(TEXTS[lang]["no_tasks"], reply_markup=_feedback_keyboard(lang))
         return
     # Validate and adjust task times — never allow past datetimes
     valid_tasks = []
@@ -1284,7 +1292,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tz_name = user["timezone"] if user else "Europe/Moscow"
         parsed = await parse_time_correction(user_text, lang, tz_name)
         if parsed.get("error"):
-            await update.message.reply_text(TEXTS[lang]["ask_when_unclear"], parse_mode="Markdown")
+            await update.message.reply_text(TEXTS[lang]["ask_when_unclear"],
+                                            parse_mode="Markdown", reply_markup=_feedback_keyboard(lang))
             return
         tasks = context.user_data.get("tasks", [])
         for idx in pending_when:
@@ -1436,7 +1445,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tz_name = user["timezone"] if user else "Europe/Moscow"
             parsed = await parse_time_correction(text, lang, tz_name)
             if parsed.get("error"):
-                await update.message.reply_text(TEXTS[lang]["ask_when_unclear"], parse_mode="Markdown")
+                await update.message.reply_text(TEXTS[lang]["ask_when_unclear"],
+                                                parse_mode="Markdown", reply_markup=_feedback_keyboard(lang))
                 return
             all_tasks = context.user_data.get("tasks", [])
             for idx in pending_when:
