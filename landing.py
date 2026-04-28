@@ -623,7 +623,7 @@ def _page(lang: str) -> str:
       rc=document.getElementById('eye-right-check');
   if(!lp||!lc||!rp||!rc) return;
 
-  var phase=0, tid=null, stopTid=null;
+  var phase=0, tid=null, stopTid=null, curMs=300;
 
   function show(p){{
     phase=p;
@@ -631,24 +631,34 @@ def _page(lang: str) -> str:
     else      {{ lp.style.display='none'; lc.style.display=''; rp.style.display=''; rc.style.display='none'; }}
   }}
 
-  function run(ms){{
-    clearInterval(tid);
-    tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
+  function resetStop(){{
     clearTimeout(stopTid);
-    stopTid=setTimeout(function(){{ clearInterval(tid); show(0); }}, 600);
+    stopTid=setTimeout(function(){{ clearInterval(tid); tid=null; show(0); }}, 1500);
   }}
 
   function onV(v){{
-    // v in px/s; map 0→800ms, 2000+→80ms
-    var ms=Math.round(800-Math.min(v,2000)/2000*720);
-    run(ms);
+    if(v < 30) return;
+    // map velocity px/s → interval ms: fast(2000)→80ms, slow(30)→400ms
+    var ms=Math.round(400-Math.min(v,2000)/2000*320);
+    ms=Math.max(80, ms);
+    if(!tid){{
+      // start fresh interval
+      tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
+      curMs=ms;
+    }} else if(Math.abs(ms-curMs)>60){{
+      // speed changed significantly — restart with new interval
+      clearInterval(tid);
+      tid=setInterval(function(){{ show(phase===0?1:0); }}, ms);
+      curMs=ms;
+    }}
+    resetStop();
   }}
 
   // Desktop: mouse speed
   var mx=0,my=0,mt=0;
   document.addEventListener('mousemove',function(e){{
     var now=Date.now(),dx=e.clientX-mx,dy=e.clientY-my,dt=now-mt;
-    if(dt>0) onV(Math.sqrt(dx*dx+dy*dy)/dt*1000);
+    if(dt>0&&dt<200) onV(Math.sqrt(dx*dx+dy*dy)/dt*1000);
     mx=e.clientX; my=e.clientY; mt=now;
   }});
 
@@ -656,7 +666,7 @@ def _page(lang: str) -> str:
   var sy=0,st=0;
   window.addEventListener('scroll',function(){{
     var now=Date.now(),ds=Math.abs(window.scrollY-sy),dt=now-st;
-    if(dt>0) onV(ds/dt*1000);
+    if(dt>0&&dt<200) onV(ds/dt*1000);
     sy=window.scrollY; st=now;
   }},{{passive:true}});
 }})();
