@@ -2989,6 +2989,20 @@ async def favicon_png(request):
 async def og_image(request):
     return web.Response(body=OG_IMAGE, content_type="image/png")
 
+async def api_stats(request):
+    try:
+        conn = sqlite3.connect("users.db")
+        tasks_created = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        conn.close()
+    except Exception:
+        tasks_created = 0
+    import json
+    return web.Response(
+        text=json.dumps({"tasks_created": tasks_created}),
+        content_type="application/json",
+        headers={"Cache-Control": "max-age=3600", "Access-Control-Allow-Origin": "*"},
+    )
+
 async def stats_page(request):
     try:
         days = int(request.rel_url.query.get("days", 7))
@@ -3456,6 +3470,7 @@ async def start_web_server():
     app.router.add_get("/favicon.ico", favicon)
     app.router.add_get("/favicon.png", favicon_png)
     app.router.add_get("/og-image.png", og_image)
+    app.router.add_get("/api/stats", api_stats)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)

@@ -745,6 +745,8 @@ _C = {
         "cookie_text": "Мы используем cookies для аналитики, чтобы улучшать сервис.",
         "cookie_accept": "Принять",
         "cookie_decline": "Отклонить",
+        "tasks_count_prefix": "Уже создано ",
+        "tasks_count_suffix": " задач",
     },
 
     "en": {
@@ -819,6 +821,8 @@ _C = {
         "cookie_text": "We use cookies for analytics to improve the service.",
         "cookie_accept": "Accept",
         "cookie_decline": "Decline",
+        "tasks_count_prefix": "",
+        "tasks_count_suffix": " tasks created",
     },
 
     "uk": {
@@ -893,6 +897,8 @@ _C = {
         "cookie_text": "Ми використовуємо cookies для аналітики, щоб покращувати сервіс.",
         "cookie_accept": "Прийняти",
         "cookie_decline": "Відхилити",
+        "tasks_count_prefix": "Вже створено ",
+        "tasks_count_suffix": " завдань",
     },
 }
 
@@ -1056,6 +1062,7 @@ _CSS = """
     }
     .btn:hover { background: var(--purple-l); transform: translateY(-1px); }
     .social-proof { margin-top: 14px; font-size: .88rem; color: var(--muted); opacity: .8; }
+    .tasks-count  { margin-top:  8px; font-size: .88rem; color: var(--muted); opacity: .8; }
 
     /* Section titles */
     .section { margin-bottom: 56px; }
@@ -1243,6 +1250,7 @@ def _page(lang: str, user_count: int = 0) -> str:
       <p class="desc">{c['desc']}</p>
       <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
       {f'<p class="social-proof">{c["social_proof"].format(n=user_count)}</p>' if user_count > 0 else ''}
+      <p class="tasks-count" id="tasks-count" style="display:none">{c['tasks_count_prefix']}<span id="tasks-count-n"></span>{c['tasks_count_suffix']}</p>
     </section>
 
     <!-- For whom -->
@@ -1300,6 +1308,24 @@ function _cookieConsent(yes) {{
   document.getElementById('cookie-banner').style.display = 'none';
   if (yes) {{ _loadGA(); }}
 }}
+</script>
+
+<script>
+(function(){{
+  var el = document.getElementById('tasks-count');
+  var numEl = document.getElementById('tasks-count-n');
+  if (!el || !numEl) return;
+  var done = false;
+  var timer = setTimeout(function(){{ done = true; }}, 2000);
+  fetch('/api/stats').then(function(r){{ return r.json(); }}).then(function(d){{
+    if (done) return;
+    clearTimeout(timer);
+    var n = d.tasks_created;
+    if (!n) return;
+    numEl.textContent = n.toLocaleString('ru-RU');
+    el.style.display = '';
+  }}).catch(function(){{ /* silent */ }});
+}})();
 </script>
 
 <script>
