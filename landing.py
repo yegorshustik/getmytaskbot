@@ -1334,7 +1334,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
 }
 @media (max-width: 600px) {
   .container { padding: 0 20px; }
-  .for-grid { grid-template-columns: repeat(2, 1fr); }
+  .for-grid { grid-template-columns: 1fr; }
   .features-bento { grid-template-columns: 1fr; }
   .cta-card { padding: 48px 28px; }
   .hero { padding: 100px 0 80px; }
