@@ -1337,7 +1337,11 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
   .for-grid { grid-template-columns: 1fr; }
   .features-bento { grid-template-columns: 1fr; }
   .cta-card { padding: 48px 28px; }
-  .hero { padding: 100px 0 80px; }
+  .hero { padding: 32px 0 40px; }
+  .hero-logo-wrap { margin-bottom: 20px; }
+  .hero-badge { margin-bottom: 20px; }
+  .hero-sub { margin-bottom: 24px; }
+  .hero-actions { margin-top: 24px; margin-bottom: 24px; }
   .nav-cta { display: none; }
   .faq-q { padding: 18px 20px; font-size: 15px; }
   .faq-a-inner { padding: 0 20px 20px; }
