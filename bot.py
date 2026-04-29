@@ -2493,11 +2493,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-    # Send users list as separate message (can be long)
-    users_text = f"*👥 Все пользователи ({len(all_users)}):*\n📅 = Google Calendar подключён\n\n" + users_block
+    # Send users list as separate message (plain text to avoid Markdown issues with underscores in usernames)
+    users_text = f"👥 Все пользователи ({len(all_users)}):\n📅 = Google Calendar подключён\n\n" + users_block
     # Telegram limit 4096 chars — split if needed
     for i in range(0, len(users_text), 4000):
-        await update.message.reply_text(users_text[i:i+4000], parse_mode="Markdown")
+        await update.message.reply_text(users_text[i:i+4000])
 
 # ─── Goals ────────────────────────────────────────────────────────────────────
 
