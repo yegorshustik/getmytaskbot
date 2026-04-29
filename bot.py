@@ -22,7 +22,7 @@ from aiohttp import web
 from collections import defaultdict, deque
 import time as _time
 
-from landing import get_home_html, FAVICON_ICO, FAVICON_PNG, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
+from landing import get_home_html, FAVICON_ICO, FAVICON_PNG, OG_IMAGE, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 
 load_dotenv()
 
@@ -2986,6 +2986,9 @@ async def favicon(request):
 async def favicon_png(request):
     return web.Response(body=FAVICON_PNG, content_type="image/png")
 
+async def og_image(request):
+    return web.Response(body=OG_IMAGE, content_type="image/png")
+
 async def stats_page(request):
     try:
         days = int(request.rel_url.query.get("days", 7))
@@ -3452,6 +3455,7 @@ async def start_web_server():
     app.router.add_get("/llms.txt", llms_txt)
     app.router.add_get("/favicon.ico", favicon)
     app.router.add_get("/favicon.png", favicon_png)
+    app.router.add_get("/og-image.png", og_image)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)
