@@ -184,7 +184,7 @@ _ALLOWED_USER_COLS = {
     "timezone", "reminder_time", "reminder_enabled", "reminder_before",
     "reminder_minutes", "pending_task_json", "last_active", "ical_token",
     "last_reengagement", "reengagement_count",
-    "first_name", "username",
+    "first_name", "username", "registered_at",
 }
 
 

@@ -4,10 +4,11 @@
 
 ```
 getmytaskbot/
-├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3150 строк
-├── db.py               # SQLite-слой, все операции с БД               ~340 строк
+├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3620 строк
+├── db.py               # SQLite-слой, все операции с БД               ~415 строк
 ├── calendar_utils.py   # Google Calendar API, OAuth/PKCE, iCal        ~240 строк
-├── texts.py            # Все локализованные строки (ru/en/uk)         ~630 строк
+├── texts.py            # Все локализованные строки (ru/en/uk)         ~695 строк
+├── landing.py          # HTML лендинга (get_home_html + assets)       ~1775 строк
 ├── tests/
 │   ├── conftest.py     # Моки тяжёлых зависимостей
 │   ├── test_logic.py   # 38 unit-тестов на чистую логику
@@ -49,6 +50,11 @@ bot.py            ← всё вышеперечисленное + telegram + gro
 | Цели | `save_goal_to_db`, `get_active_goals`, `delete_goal_from_db`, `get_goal_progress` |
 | Напоминания | `reminder_already_sent`, `mark_reminder_sent` |
 | OAuth | `save_oauth_state`, `pop_oauth_state` |
+
+**Поля таблицы `users` (актуально на апрель 2026):**
+`chat_id`, `lang`, `calendar_token`, `first_task_done`, `calendar_connected`, `timezone`, `reminder_time`, `reminder_enabled`, `reminder_before`, `reminder_minutes`, `pending_task_json`, `last_active`, `ical_token`, `last_reengagement`, `reengagement_count`, `first_name`, `username`, `registered_at`
+
+`registered_at` — проставляется автоматически в `save_user()` при первом INSERT (если NULL). Используется для подсчёта реально новых пользователей в `/admin`.
 
 ### `calendar_utils.py` — интеграция с Google
 Зависит от `db` и `texts`. Нет Telegram-импортов.
@@ -125,6 +131,13 @@ make hooks    # активировать pre-commit хук
 | 3 | Извлечён `db.py` | −~260 строк |
 | 4 | Извлечён `calendar_utils.py` | −~220 строк |
 | **Итого** | bot.py: 4251 → 3158 строк | **−1093 строки** |
+
+### Изменения апрель 2026
+- `registered_at` добавлен в схему `users` и `_ALLOWED_USER_COLS`
+- `/admin` (= `/stats`): исправлена метрика `new_users` (теперь по `registered_at`), убрано дублирование уведомлений
+- Меню команд: порядок start→tasks→goals→settings, `/timezone` убрана из меню (доступна из `/settings`)
+- Кнопки "Перенести задачу": заменены на +1ч / +3ч / завтра
+- После удаления последней цели — автоматический промпт создать новую
 
 ---
 

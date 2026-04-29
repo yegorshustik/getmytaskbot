@@ -21,6 +21,7 @@ from aiohttp import web
 
 from collections import defaultdict, deque
 import time as _time
+import html as _html
 
 from landing import get_home_html, FAVICON_ICO, FAVICON_PNG, OG_IMAGE, LLMS_TXT, ROBOTS_TXT, SITEMAP_XML
 
@@ -2465,15 +2466,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     off_count = len(s7.get("reminders_off_ids", []))
 
     # ── Users list ────────────────────────────────────────────────────────────
-    import html as _html
     all_users = s7.get("all_users", [])
     user_lines = []
     for uid, lang, cal, last_active, first_name, username, registered_at, reminder_enabled in all_users:
         # Always show last_active so date matches sort order
         if last_active:
             try:
-                from datetime import datetime as _dt
-                _d = _dt.fromisoformat(last_active[:10])
+                _d = datetime.fromisoformat(last_active[:10])
                 date_str = _d.strftime("%-d %b %Y")   # e.g. "22 Apr 2026"
             except Exception:
                 date_str = last_active[:10]
