@@ -2359,7 +2359,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in ("connect_calendar", "disconnect_calendar", "skip_calendar"):
         return await _cb_calendar_connect(query, context, data, chat_id, lang, user)
     if (data.startswith("settings_") or data.startswith("reminder_") or data == "reminder_disable"
-            or data.startswith("archive_page_") or data.startswith("set_remind_min_")):
+            or data.startswith("archive_page_") or data.startswith("set_remind_min_")
+            or data == "apple_cal_disconnect"):
         return await _cb_settings(query, context, data, chat_id, lang, user)
     if data.startswith("tz_"):
         return await _cb_tz(query, context, data, chat_id, lang)
