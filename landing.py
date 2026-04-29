@@ -747,6 +747,27 @@ _C = {
         "cookie_decline": "Отклонить",
         "tasks_count_prefix": "Уже создано ",
         "tasks_count_suffix": " задач",
+
+        "how_title": "Как это работает",
+        "how_steps": [
+            ("🎤", "Надиктуй или напиши", "Отправь голосовое или текст с задачами прямо в Telegram"),
+            ("🤖", "Бот структурирует", "Разобьёт на задачи, расставит Q1–Q4, предложит дату и время"),
+            ("📅", "Синхронизируй с Calendar", "Один тап — задача в Google Calendar с напоминанием"),
+        ],
+
+        "demo_title": "Смотри, как это работает",
+        "demo_user_msg": "Позвони Максу в пятницу в 11, сдай отчёт в понедельник до 18:00",
+        "demo_bot_tasks": [
+            ("Q1", "Позвонить Максу", "пт, 11:00"),
+            ("Q2", "Сдать отчёт", "пн, 18:00"),
+        ],
+        "demo_btn": "Добавить в Calendar",
+
+        "free_title": "Полностью бесплатно",
+        "free_desc": "Все функции доступны без оплаты и без лимитов",
+        "free_features": ["Голосовой ввод", "Матрица Эйзенхауэра", "Google Calendar", "SMART-цели", "Напоминания", "Утренний дайджест"],
+
+        "footer_bot": "Открыть бота",
     },
 
     "en": {
@@ -823,6 +844,27 @@ _C = {
         "cookie_decline": "Decline",
         "tasks_count_prefix": "",
         "tasks_count_suffix": " tasks created",
+
+        "how_title": "How it works",
+        "how_steps": [
+            ("🎤", "Dictate or type", "Send a voice note or text with tasks to Telegram"),
+            ("🤖", "Bot structures it", "Splits into tasks, sets Q1–Q4 priorities, suggests date & time"),
+            ("📅", "Sync with Calendar", "One tap — task in Google Calendar with a reminder"),
+        ],
+
+        "demo_title": "See it in action",
+        "demo_user_msg": "Call Max on Friday at 11am, submit the report by Monday 6pm",
+        "demo_bot_tasks": [
+            ("Q1", "Call Max", "Fri, 11:00"),
+            ("Q2", "Submit report", "Mon, 18:00"),
+        ],
+        "demo_btn": "Add to Calendar",
+
+        "free_title": "Completely free",
+        "free_desc": "All features available with no payment and no limits",
+        "free_features": ["Voice input", "Eisenhower Matrix", "Google Calendar", "SMART Goals", "Reminders", "Morning digest"],
+
+        "footer_bot": "Open bot",
     },
 
     "uk": {
@@ -899,6 +941,27 @@ _C = {
         "cookie_decline": "Відхилити",
         "tasks_count_prefix": "Вже створено ",
         "tasks_count_suffix": " завдань",
+
+        "how_title": "Як це працює",
+        "how_steps": [
+            ("🎤", "Надиктуй або напиши", "Відправ голосове або текст із задачами прямо в Telegram"),
+            ("🤖", "Бот структурує", "Розіб'є на задачі, розставить Q1–Q4, запропонує дату та час"),
+            ("📅", "Синхронізуй з Calendar", "Один тап — задача в Google Calendar з нагадуванням"),
+        ],
+
+        "demo_title": "Дивись, як це працює",
+        "demo_user_msg": "Зателефонуй Максу в п'ятницю о 11, здай звіт в понеділок до 18:00",
+        "demo_bot_tasks": [
+            ("Q1", "Зателефонувати Максу", "пт, 11:00"),
+            ("Q2", "Здати звіт", "пн, 18:00"),
+        ],
+        "demo_btn": "Додати в Calendar",
+
+        "free_title": "Повністю безкоштовно",
+        "free_desc": "Всі функції доступні без оплати та без лімітів",
+        "free_features": ["Голосовий ввід", "Матриця Ейзенхауера", "Google Calendar", "SMART-цілі", "Нагадування", "Ранковий дайджест"],
+
+        "footer_bot": "Відкрити бота",
     },
 }
 
@@ -959,13 +1022,68 @@ def _facts_html(c):
 def _faq_html(c):
     parts = []
     for i, (q, a) in enumerate(c["faq"]):
+        open_attr = " open" if i < 2 else ""
         parts.append(
-            f'<details class="faq-item">'
+            f'<details class="faq-item"{open_attr}>'
             f'<summary>{q}</summary>'
             f'<p>{a}</p>'
             f'</details>'
         )
     return "".join(parts)
+
+
+def _how_html(c):
+    parts = []
+    for i, (icon, title, desc) in enumerate(c["how_steps"], 1):
+        parts.append(
+            f'<div class="how-step">'
+            f'<div class="how-num">{i}</div>'
+            f'<div class="how-icon">{icon}</div>'
+            f'<h3 class="how-step-title">{title}</h3>'
+            f'<p class="how-step-desc">{desc}</p>'
+            f'</div>'
+        )
+    return "".join(parts)
+
+
+def _demo_html(c):
+    tasks_html = "".join(
+        f'<div class="tg-task">'
+        f'<span class="tg-q tg-q-{q.lower()}">{q}</span>'
+        f'<span class="tg-task-title">{title}</span>'
+        f'<span class="tg-task-time">{time}</span>'
+        f'</div>'
+        for q, title, time in c["demo_bot_tasks"]
+    )
+    return (
+        f'<div class="tg-window">'
+        f'<div class="tg-topbar">'
+        f'<div class="tg-avatar">GMT</div>'
+        f'<div class="tg-botname">Get My Task <span class="tg-verified">✓</span></div>'
+        f'</div>'
+        f'<div class="tg-messages">'
+        f'<div class="tg-bubble tg-bubble-user">'
+        f'<span class="tg-mic">🎤</span> {c["demo_user_msg"]}'
+        f'</div>'
+        f'<div class="tg-bubble tg-bubble-bot">'
+        f'<div class="tg-tasks-list">{tasks_html}</div>'
+        f'<button class="tg-cal-btn">📅 {c["demo_btn"]}</button>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def _free_html(c):
+    badges = "".join(f'<span class="free-badge">{f}</span>' for f in c["free_features"])
+    return (
+        f'<div class="free-block">'
+        f'<div class="free-icon">🎁</div>'
+        f'<h3 class="free-title">{c["free_title"]}</h3>'
+        f'<p class="free-desc">{c["free_desc"]}</p>'
+        f'<div class="free-badges">{badges}</div>'
+        f'</div>'
+    )
 
 
 def _schema_json(c, lang):
@@ -1139,6 +1257,81 @@ _CSS = """
     footer a:hover { color: var(--yellow); }
     .footer-copy { color: #4a4060; font-size: .78rem; }
 
+    /* How it works */
+    .how-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; }
+    @media(max-width:640px){ .how-grid { grid-template-columns: 1fr; } }
+    .how-step {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px 24px; position: relative; text-align: center;
+    }
+    .how-num {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      background: var(--purple); color: #fff; font-weight: 700; font-size: .78rem;
+      width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    }
+    .how-icon { font-size: 2rem; margin: 8px 0 12px; }
+    .how-step-title { font-size: 1rem; font-weight: 600; color: var(--white); margin-bottom: 8px; }
+    .how-step-desc { font-size: .85rem; color: var(--muted); line-height: 1.5; }
+
+    /* Telegram demo */
+    .tg-demo-wrap { display: flex; justify-content: center; }
+    .tg-window {
+      background: #17212b; border-radius: 16px; overflow: hidden;
+      width: 100%; max-width: 420px; box-shadow: 0 8px 40px rgba(0,0,0,.5);
+    }
+    .tg-topbar {
+      background: #232e3c; padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid #0d1117;
+    }
+    .tg-avatar {
+      width: 38px; height: 38px; border-radius: 50%; background: var(--purple);
+      color: #fff; font-size: .68rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .tg-botname { font-weight: 600; font-size: .95rem; color: #e8f0fb; }
+    .tg-verified { color: #5eaef5; font-size: .8rem; }
+    .tg-messages { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .tg-bubble {
+      max-width: 88%; padding: 10px 14px; border-radius: 14px;
+      font-size: .88rem; line-height: 1.5;
+    }
+    .tg-bubble-user {
+      background: #2b5278; color: #e8f0fb; align-self: flex-end; border-bottom-right-radius: 4px;
+    }
+    .tg-bubble-bot {
+      background: #232e3c; color: #e8f0fb; align-self: flex-start; border-bottom-left-radius: 4px;
+    }
+    .tg-mic { font-style: normal; }
+    .tg-tasks-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .tg-task { display: flex; align-items: center; gap: 8px; }
+    .tg-q {
+      font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 6px;
+      flex-shrink: 0; white-space: nowrap;
+    }
+    .tg-q-q1 { background: #c0392b22; color: #e74c3c; border: 1px solid #e74c3c44; }
+    .tg-q-q2 { background: #27ae6022; color: #2ecc71; border: 1px solid #2ecc7144; }
+    .tg-task-title { font-size: .88rem; color: var(--white); flex: 1; }
+    .tg-task-time { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+    .tg-cal-btn {
+      background: var(--purple); color: #fff; border: none; border-radius: 8px;
+      padding: 7px 14px; font-size: .82rem; cursor: default; width: 100%;
+    }
+
+    /* Free block */
+    .free-block {
+      background: linear-gradient(135deg, #1e1035 0%, #2a1545 100%);
+      border: 1px solid var(--purple); border-radius: 20px;
+      padding: 36px 32px; text-align: center; margin: 48px 0 0;
+    }
+    .free-icon { font-size: 2.4rem; margin-bottom: 12px; }
+    .free-title { font-size: 1.4rem; font-weight: 700; color: var(--yellow); margin-bottom: 8px; }
+    .free-desc { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+    .free-badges { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .free-badge {
+      background: rgba(93,35,98,.4); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 14px; font-size: .8rem; color: var(--text);
+    }
+
     /* Cookie consent banner */
     #cookie-banner {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
@@ -1206,6 +1399,7 @@ def _page(lang: str, user_count: int = 0) -> str:
   <meta name="twitter:title" content="Get My Task — {c['tagline']}"/>
   <meta name="twitter:description" content="{c['desc']}"/>
   <meta name="twitter:image" content="{_BASE_URL}/og-image.png"/>
+  <link rel="preconnect" href="https://www.googletagmanager.com"/>
   <link rel="icon" type="image/png" href="/favicon.png"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
 
@@ -1248,9 +1442,15 @@ def _page(lang: str, user_count: int = 0) -> str:
       <h1>Get My Task</h1>
       <p class="tagline">{c['tagline']}</p>
       <p class="desc">{c['desc']}</p>
-      <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
+      <a class="btn" href="https://t.me/getmytask_bot?start=landing" rel="noopener">{c['cta']}</a>
       {f'<p class="social-proof">{c["social_proof"].format(n=user_count)}</p>' if user_count > 0 else ''}
       <p class="tasks-count" id="tasks-count" style="display:none">{c['tasks_count_prefix']}<span id="tasks-count-n"></span>{c['tasks_count_suffix']}</p>
+    </section>
+
+    <!-- How it works -->
+    <section class="section" aria-labelledby="how">
+      <h2 class="section-title" id="how">{c['how_title']}</h2>
+      <div class="how-grid">{_how_html(c)}</div>
     </section>
 
     <!-- For whom -->
@@ -1271,15 +1471,24 @@ def _page(lang: str, user_count: int = 0) -> str:
       <div class="grid-2">{_features_html(c)}</div>
     </section>
 
+    <!-- Telegram demo -->
+    <section class="section" aria-labelledby="demo">
+      <h2 class="section-title" id="demo">{c['demo_title']}</h2>
+      <div class="tg-demo-wrap">{_demo_html(c)}</div>
+    </section>
+
     <!-- FAQ -->
     <section class="section" aria-labelledby="faq">
       <h2 class="section-title" id="faq">{c['faq_title']}</h2>
       <div class="faq-list">{_faq_html(c)}</div>
     </section>
 
+    <!-- Free block -->
+    {_free_html(c)}
+
     <!-- CTA repeat -->
-    <div style="text-align:center;margin-bottom:8px;">
-      <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
+    <div style="text-align:center;margin:48px 0 8px;">
+      <a class="btn" href="https://t.me/getmytask_bot?start=landing" rel="noopener">{c['cta']}</a>
       {f'<p class="social-proof">{c["social_proof"].format(n=user_count)}</p>' if user_count > 0 else ''}
     </div>
 
@@ -1287,6 +1496,7 @@ def _page(lang: str, user_count: int = 0) -> str:
 
   <footer>
     <div class="footer-links">
+      <a href="https://t.me/getmytask_bot?start=landing" rel="noopener">{c['footer_bot']}</a>
       <a href="/privacy">{c['footer_privacy']}</a>
     </div>
     <div class="footer-copy">© {year} Get My Task. All rights reserved.</div>
