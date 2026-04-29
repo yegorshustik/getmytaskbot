@@ -3598,13 +3598,12 @@ async def main():
     await bot_app.initialize()
     await bot_app.start()
     await bot_app.bot.set_my_commands([
-        BotCommand("start", "🏠 Главное меню"),
-        BotCommand("tasks", "📋 Мои задачи"),
+        BotCommand("start",    "🏠 Главное меню"),
+        BotCommand("tasks",    "📋 Мои задачи"),
+        BotCommand("goals",    "🎯 Мои цели"),
         BotCommand("settings", "⚙️ Настройки"),
-        BotCommand("timezone", "🕐 Таймзона"),
-        BotCommand("connect", "📅 Подключить Calendar"),
-        BotCommand("goals", "🎯 Мои цели"),
-        BotCommand("help", "❓ Помощь"),
+        BotCommand("connect",  "📅 Подключить Calendar"),
+        BotCommand("help",     "❓ Помощь"),
     ])
     await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
     print("Бот запущен...")
