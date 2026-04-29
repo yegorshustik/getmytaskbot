@@ -1011,7 +1011,6 @@ def _problems_html(c):
         n = str(i + 1).zfill(2)
         parts.append(
             f'<div class="problem-card">'
-            f'<span class="problem-num">{n}</span>'
             f'<span class="problem-icon"><i data-lucide="{icon}"></i></span>'
             f'<h3>{title}</h3>'
             f'<p>{text}</p>'
