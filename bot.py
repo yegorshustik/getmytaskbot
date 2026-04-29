@@ -30,6 +30,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "114978994"))
+STATS_SECRET = os.getenv("STATS_SECRET", "")
 
 from db import (
     init_db, log_event, get_user, save_user,
@@ -3004,6 +3005,11 @@ async def api_stats(request):
     )
 
 async def stats_page(request):
+    # Protect with secret key: /stats?key=SECRET
+    if STATS_SECRET:
+        key = request.rel_url.query.get("key", "")
+        if key != STATS_SECRET:
+            return web.Response(text="403 Forbidden", status=403)
     try:
         days = int(request.rel_url.query.get("days", 7))
         if days not in (0, 7, 14, 30, 90):
@@ -3454,8 +3460,28 @@ async def ical_open(request):
     webcal_url = f"webcal://{base}/ical/{token}"
     raise web.HTTPFound(location=webcal_url)
 
+@web.middleware
+async def security_headers_middleware(request, handler):
+    response = await handler(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    # CSP: allow GA scripts, self for everything else
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; "
+        "connect-src 'self' https://www.google-analytics.com; "
+        "img-src 'self' data: https://www.google-analytics.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
+
 async def start_web_server():
-    app = web.Application()
+    app = web.Application(middlewares=[security_headers_middleware])
     app.router.add_get("/", home_page)
     app.router.add_get("/health", health_check)
     app.router.add_get("/ical/{token}", ical_feed)
