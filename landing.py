@@ -678,7 +678,7 @@ _C = {
         "tagline": "AI-менеджер задач и целей",
         "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google Calendar",
         "cta": "Попробовать бесплатно →",
-        "social_proof": "Уже {n} пользователей управляют задачами",
+        "social_proof": "{n} активных пользователей",
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -751,7 +751,7 @@ _C = {
         "cookie_accept": "Принять",
         "cookie_decline": "Отклонить",
         "tasks_count_prefix": "Уже создано ",
-        "tasks_count_suffix": " задач",
+        "tasks_count_suffix": "задач создано",
 
         "how_title": "Как это работает",
         "how_steps": [
@@ -780,7 +780,7 @@ _C = {
         "tagline": "AI Task & Goal Manager",
         "desc": "Voice notes and texts → tasks, goals & Google Calendar sync",
         "cta": "Try for free →",
-        "social_proof": "Join {n} people managing their tasks",
+        "social_proof": "{n} active users",
 
         "for_whom_title": "Who it's for",
         "personas": [
@@ -853,7 +853,7 @@ _C = {
         "cookie_accept": "Accept",
         "cookie_decline": "Decline",
         "tasks_count_prefix": "",
-        "tasks_count_suffix": " tasks created",
+        "tasks_count_suffix": "tasks created",
 
         "how_title": "How it works",
         "how_steps": [
@@ -882,7 +882,7 @@ _C = {
         "tagline": "AI-менеджер задач і цілей",
         "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google Calendar",
         "cta": "Спробувати безкоштовно →",
-        "social_proof": "Вже {n} користувачів керують завданнями",
+        "social_proof": "{n} активних користувачів",
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -955,7 +955,7 @@ _C = {
         "cookie_accept": "Прийняти",
         "cookie_decline": "Відхилити",
         "tasks_count_prefix": "Вже створено ",
-        "tasks_count_suffix": " завдань",
+        "tasks_count_suffix": "завдань створено",
 
         "how_title": "Як це працює",
         "how_steps": [
@@ -1359,10 +1359,9 @@ def _page(lang: str, user_count: int = 0) -> str:
         for l in ("ru", "en", "uk")
     )
 
+    _n_tag = f'<span class="hero-social-count">{user_count}</span>'
     social_html = (
-        f'<span class="hero-social"><span class="hero-social-count">{user_count}</span>&nbsp;'
-        + c["social_proof"].format(n="").strip()
-        + '</span>'
+        f'<span class="hero-social">{c["social_proof"].format(n=_n_tag)}</span>'
         if user_count > 0 else ""
     )
 
