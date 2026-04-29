@@ -2407,7 +2407,7 @@ def get_stats_data(days=7):
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
     # All users list — sorted by registration date (newest first)
     all_users   = conn.execute(
-        "SELECT chat_id, lang, calendar_connected, last_active, first_name, username, registered_at FROM users "
+        "SELECT chat_id, lang, calendar_connected, last_active, first_name, username, registered_at, reminder_enabled FROM users "
         "WHERE lang IS NOT NULL ORDER BY rowid DESC"
     ).fetchall()
     # Chart data
@@ -2460,30 +2460,31 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reminders_off_block = "\n\n*🔕 Отключили уведомления:* нет"
 
     # ── Users list ────────────────────────────────────────────────────────────
+    import html as _html
     all_users = s7.get("all_users", [])
     user_lines = []
-    for uid, lang, cal, last_active, first_name, username, registered_at in all_users:
-        # Show registration date; fall back to last_active for old users without registered_at
+    for uid, lang, cal, last_active, first_name, username, registered_at, reminder_enabled in all_users:
+        # Date: registration preferred, fall back to last_active for old records
         raw_date = registered_at or last_active
         if raw_date:
             try:
                 from datetime import datetime as _dt
                 _d = _dt.fromisoformat(raw_date[:10])
-                date_str = _d.strftime("%-d %b, %Y")   # e.g. "22 Apr, 2026"
+                date_str = _d.strftime("%-d %b %Y")   # e.g. "22 Apr 2026"
             except Exception:
                 date_str = raw_date[:10]
         else:
             date_str = "—"
-        date_label = "reg" if registered_at else "act"
-        cal_mark = " 📅" if cal else ""
+        cal_mark  = "📅" if cal else "  "
+        notif_mark = "  " if reminder_enabled != 0 else "🔕"
         if username:
-            display = f"@{username}"
+            display = f"@{_html.escape(username)}"
         elif first_name:
-            display = first_name
+            display = _html.escape(first_name)
         else:
             display = str(uid)
-        user_lines.append(f"• {display}{cal_mark} — {date_str}")
-    users_block = "\n".join(user_lines) if user_lines else "  нет"
+        user_lines.append(f"{cal_mark}{notif_mark} {display} — {date_str}")
+    users_block = "\n".join(user_lines) if user_lines else "нет"
 
     text = (
         "📊 *Статистика Get My Task*\n\n"
@@ -2504,11 +2505,24 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-    # Send users list as separate message (plain text to avoid Markdown issues with underscores in usernames)
-    users_text = f"👥 Все пользователи ({len(all_users)}):\n📅 = Google Calendar подключён\n\n" + users_block
-    # Telegram limit 4096 chars — split if needed
-    for i in range(0, len(users_text), 4000):
-        await update.message.reply_text(users_text[i:i+4000])
+    # Send users list as separate HTML message (HTML mode safe with underscores in usernames)
+    header = f"👥 <b>Все пользователи ({len(all_users)})</b>\n📅 = Google Calendar   🔕 = уведомления выкл\n\n"
+    pre_open, pre_close = "<pre>", "</pre>"
+    # Wrap block in <pre> for monospace; split at 4000 chars
+    full = header + pre_open + users_block + pre_close
+    if len(full) <= 4000:
+        await update.message.reply_text(full, parse_mode="HTML")
+    else:
+        await update.message.reply_text(header, parse_mode="HTML")
+        lines = users_block.split("\n")
+        chunk: list[str] = []
+        for line in lines:
+            chunk.append(line)
+            if sum(len(l) + 1 for l in chunk) > 3800:
+                await update.message.reply_text(pre_open + "\n".join(chunk[:-1]) + pre_close, parse_mode="HTML")
+                chunk = [line]
+        if chunk:
+            await update.message.reply_text(pre_open + "\n".join(chunk) + pre_close, parse_mode="HTML")
 
 # ─── Goals ────────────────────────────────────────────────────────────────────
 
