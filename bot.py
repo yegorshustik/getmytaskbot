@@ -2405,10 +2405,10 @@ def get_stats_data(days=7):
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
     text_total  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='text_task' AND created_at >= ?", (since,)).fetchone()[0]
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
-    # All users list — sorted by registration date (newest first)
+    # All users list — sorted by last activity (most recent first)
     all_users   = conn.execute(
         "SELECT chat_id, lang, calendar_connected, last_active, first_name, username, registered_at, reminder_enabled FROM users "
-        "WHERE lang IS NOT NULL ORDER BY rowid DESC"
+        "WHERE lang IS NOT NULL ORDER BY last_active DESC NULLS LAST"
     ).fetchall()
     # Chart data
     use_monthly = (days == 0 or days >= 90)
@@ -2464,26 +2464,27 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     all_users = s7.get("all_users", [])
     user_lines = []
     for uid, lang, cal, last_active, first_name, username, registered_at, reminder_enabled in all_users:
-        # Date: registration preferred, fall back to last_active for old records
-        raw_date = registered_at or last_active
-        if raw_date:
+        # Always show last_active so date matches sort order
+        if last_active:
             try:
                 from datetime import datetime as _dt
-                _d = _dt.fromisoformat(raw_date[:10])
+                _d = _dt.fromisoformat(last_active[:10])
                 date_str = _d.strftime("%-d %b %Y")   # e.g. "22 Apr 2026"
             except Exception:
-                date_str = raw_date[:10]
+                date_str = last_active[:10]
         else:
             date_str = "—"
-        cal_mark  = "📅" if cal else "  "
-        notif_mark = "  " if reminder_enabled != 0 else "🔕"
+        # ASCII flags: G=Google Calendar, M=Muted notifications
+        cal_flag   = "G" if cal else "."
+        notif_flag = "M" if reminder_enabled == 0 else "."
+        flags = f"[{cal_flag}{notif_flag}]"
         if username:
             display = f"@{_html.escape(username)}"
         elif first_name:
             display = _html.escape(first_name)
         else:
             display = str(uid)
-        user_lines.append(f"{cal_mark}{notif_mark} {display} — {date_str}")
+        user_lines.append(f"{flags} {display} — {date_str}")
     users_block = "\n".join(user_lines) if user_lines else "нет"
 
     text = (
@@ -2506,7 +2507,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
     # Send users list as separate HTML message (HTML mode safe with underscores in usernames)
-    header = f"👥 <b>Все пользователи ({len(all_users)})</b>\n📅 = Google Calendar   🔕 = уведомления выкл\n\n"
+    header = f"👥 <b>Все пользователи ({len(all_users)})</b>\n[G.] = Google Calendar   [.M] = уведомления выкл\n\n"
     pre_open, pre_close = "<pre>", "</pre>"
     # Wrap block in <pre> for monospace; split at 4000 chars
     full = header + pre_open + users_block + pre_close
