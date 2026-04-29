@@ -2283,7 +2283,7 @@ async def _cb_reminder_action(query, context, data: str, chat_id: int, lang: str
                 )
         return
 
-    # action == "mv": show tomorrow / next-week quick-pick
+    # action == "mv": show +1h / +3h / tomorrow quick-pick
     conn = sqlite3.connect("users.db")
     row = conn.execute("SELECT title, suggested_date, suggested_time FROM tasks WHERE id=?", (task_id,)).fetchone()
     conn.close()
@@ -2293,19 +2293,25 @@ async def _cb_reminder_action(query, context, data: str, chat_id: int, lang: str
     title, cur_date, cur_time = row
     tz_name = user["timezone"] if user else "Europe/Moscow"
     tz = ZoneInfo(tz_name)
-    today = datetime.now(tz).date()
-    tomorrow = (today + timedelta(days=1)).strftime("%Y-%m-%d")
-    next_week = (today + timedelta(days=7)).strftime("%Y-%m-%d")
-    time_part = cur_time or ""
+    now_tz = datetime.now(tz)
+    in_1h  = now_tz + timedelta(hours=1)
+    in_3h  = now_tz + timedelta(hours=3)
+    tomorrow = (now_tz + timedelta(days=1)).date()
     buttons = [
         [
             InlineKeyboardButton(
-                t["reminder_tomorrow"],
-                callback_data=f"mv_yes_{task_id}_{tomorrow}_{time_part}",
+                t["reminder_1h"],
+                callback_data=f"mv_yes_{task_id}_{in_1h.strftime('%Y-%m-%d')}_{in_1h.strftime('%H:%M')}",
             ),
             InlineKeyboardButton(
-                t["reminder_next_week"],
-                callback_data=f"mv_yes_{task_id}_{next_week}_{time_part}",
+                t["reminder_3h"],
+                callback_data=f"mv_yes_{task_id}_{in_3h.strftime('%Y-%m-%d')}_{in_3h.strftime('%H:%M')}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                t["reminder_tomorrow"],
+                callback_data=f"mv_yes_{task_id}_{tomorrow.strftime('%Y-%m-%d')}_{cur_time or ''}",
             ),
         ],
         [InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no")],
