@@ -1231,7 +1231,7 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .hero-sub { font-size: clamp(17px, 2.5vw, 21px); color: var(--text2); font-weight: 400; margin-bottom: 40px; max-width: 560px; margin-left: auto; margin-right: auto; }
 .hero-actions { display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center; margin-top: 40px; margin-bottom: 40px; }
 .hero-stats { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #EDE84A; color: #2a1040; text-decoration: none; font-size: 16px; font-weight: 600; padding: 14px 28px; border-radius: var(--radius-sm); box-shadow: 0 0 40px #EDE84A44; transition: all 0.25s; letter-spacing: -0.01em; }
+.btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #EDE84A; color: #2a1040; text-decoration: none; font-size: 16px; font-weight: 600; padding: 14px 28px; border-radius: var(--radius-sm); box-shadow: 0 0 40px #EDE84A44; transition: all 0.25s; letter-spacing: -0.01em; white-space: nowrap; }
 .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 50px #EDE84A66; }
 .hero-social { font-size: 14px; color: var(--text3); display: flex; align-items: center; gap: 6px; background: oklch(14% 0.018 260 / 0.7); border: 1px solid var(--border); border-radius: 100px; padding: 6px 14px; }
 .hero-social-count { font-weight: 600; color: var(--text2); }
@@ -1341,6 +1341,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
   .nav-cta { display: none; }
   .faq-q { padding: 18px 20px; font-size: 15px; }
   .faq-a-inner { padding: 0 20px 20px; }
+  .btn-primary { padding: 13px 20px; font-size: 15px; }
 }
 """
 
