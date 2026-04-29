@@ -52,7 +52,13 @@ TEXTS = {
         "btn_apple_cal_open": "🍎 Открыть в Apple Calendar",
         "btn_apple_cal_connect": "🍎 Подключить Apple Calendar",
         "btn_apple_cal_disconnect": "❌ Отключить подписку",
-        "apple_cal_disconnected": "✅ Подписка отключена. Apple Calendar перестанет получать обновления.",
+        "apple_cal_disconnected": (
+            "✅ Подписка отключена на стороне бота.\n\n"
+            "📱 *Чтобы полностью удалить её из приложения:*\n"
+            "Настройки → Приложения → Календарь → Учётные записи → "
+            "найди «Get My Task» → удали.\n\n"
+            "Иначе Apple Calendar будет показывать ошибку при обновлении."
+        ),
         "calendar_choose": "📅 Подключи календарь, чтобы задачи синхронизировались автоматически:",
         "btn_feedback": "✉️ Написать нам",
         "feedback_prompt": "✉️ Напишите ваше сообщение — текст или голосовое. Мы читаем каждое обращение.",
@@ -284,7 +290,13 @@ TEXTS = {
         "btn_apple_cal_open": "🍎 Open in Apple Calendar",
         "btn_apple_cal_connect": "🍎 Connect Apple Calendar",
         "btn_apple_cal_disconnect": "❌ Disconnect subscription",
-        "apple_cal_disconnected": "✅ Subscription disconnected. Apple Calendar will stop receiving updates.",
+        "apple_cal_disconnected": (
+            "✅ Subscription disconnected on the bot side.\n\n"
+            "📱 *To fully remove it from the app:*\n"
+            "Settings → Apps → Calendar → Accounts → "
+            "find «Get My Task» → delete.\n\n"
+            "Otherwise Apple Calendar will show an error when refreshing."
+        ),
         "calendar_choose": "📅 Connect a calendar so tasks sync automatically:",
         "btn_feedback": "✉️ Contact us",
         "feedback_prompt": "✉️ Send us a message — text or voice. We read every submission.",
@@ -516,7 +528,13 @@ TEXTS = {
         "btn_apple_cal_open": "🍎 Відкрити в Apple Calendar",
         "btn_apple_cal_connect": "🍎 Підключити Apple Calendar",
         "btn_apple_cal_disconnect": "❌ Відключити підписку",
-        "apple_cal_disconnected": "✅ Підписку відключено. Apple Calendar припинить отримувати оновлення.",
+        "apple_cal_disconnected": (
+            "✅ Підписку відключено на стороні бота.\n\n"
+            "📱 *Щоб повністю видалити її з додатку:*\n"
+            "Налаштування → Програми → Календар → Облікові записи → "
+            "знайди «Get My Task» → видали.\n\n"
+            "Інакше Apple Calendar показуватиме помилку при оновленні."
+        ),
         "calendar_choose": "📅 Підключи календар, щоб задачі синхронізувалися автоматично:",
         "btn_feedback": "✉️ Написати нам",
         "feedback_prompt": "✉️ Напишіть ваше повідомлення — текст або голосове. Ми читаємо кожне звернення.",
