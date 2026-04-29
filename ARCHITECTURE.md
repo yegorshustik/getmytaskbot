@@ -98,7 +98,7 @@ _cu.init(BASE_URL)
 | `_cb_goal_delete` | `gdel_*` |
 | `_cb_announce` | `announce_*` |
 | `_cb_calendar_connect` | `connect_calendar`, `disconnect_calendar`, `skip_calendar` |
-| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*` |
+| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*`, `apple_cal_connect`, `apple_cal_connect_fresh`, `apple_cal_disconnect` |
 | `_cb_tz` | `tz_*` |
 | `_cb_ics` | `ics_*` |
 | `_cb_recur` | `recur_*` |
