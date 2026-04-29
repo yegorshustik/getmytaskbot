@@ -2405,10 +2405,10 @@ def get_stats_data(days=7):
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
     text_total  = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='text_task' AND created_at >= ?", (since,)).fetchone()[0]
     cal_connects= conn.execute("SELECT COUNT(*) FROM events WHERE event_type='calendar_connected' AND created_at >= ?", (since,)).fetchone()[0]
-    # All users list — sorted by last_active desc
+    # All users list — sorted by registration date (newest first)
     all_users   = conn.execute(
-        "SELECT chat_id, lang, calendar_connected, last_active, first_name, username FROM users "
-        "WHERE lang IS NOT NULL ORDER BY last_active DESC NULLS LAST"
+        "SELECT chat_id, lang, calendar_connected, last_active, first_name, username, registered_at FROM users "
+        "WHERE lang IS NOT NULL ORDER BY rowid DESC"
     ).fetchall()
     # Chart data
     use_monthly = (days == 0 or days >= 90)
@@ -2462,16 +2462,27 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Users list ────────────────────────────────────────────────────────────
     all_users = s7.get("all_users", [])
     user_lines = []
-    for uid, lang, cal, last_active, first_name, username in all_users:
-        la = last_active[:10] if last_active else "—"
+    for uid, lang, cal, last_active, first_name, username, registered_at in all_users:
+        # Show registration date; fall back to last_active for old users without registered_at
+        raw_date = registered_at or last_active
+        if raw_date:
+            try:
+                from datetime import datetime as _dt
+                _d = _dt.fromisoformat(raw_date[:10])
+                date_str = _d.strftime("%-d %b, %Y")   # e.g. "22 Apr, 2026"
+            except Exception:
+                date_str = raw_date[:10]
+        else:
+            date_str = "—"
+        date_label = "reg" if registered_at else "act"
         cal_mark = " 📅" if cal else ""
         if username:
             display = f"@{username}"
         elif first_name:
             display = first_name
         else:
-            display = f"`{uid}`"
-        user_lines.append(f"• {display}{cal_mark} — {la}")
+            display = str(uid)
+        user_lines.append(f"• {display}{cal_mark} — {date_str}")
     users_block = "\n".join(user_lines) if user_lines else "  нет"
 
     text = (

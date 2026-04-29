@@ -76,6 +76,7 @@ def init_db():
         ("reengagement_count", "INTEGER DEFAULT 0"),
         ("first_name", "TEXT DEFAULT NULL"),
         ("username", "TEXT DEFAULT NULL"),
+        ("registered_at", "TEXT DEFAULT NULL"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -191,6 +192,11 @@ def save_user(chat_id, **kwargs):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("INSERT OR IGNORE INTO users (chat_id) VALUES (?)", (chat_id,))
+    # Set registered_at only on first insert (when it's NULL)
+    c.execute(
+        "UPDATE users SET registered_at = datetime('now') WHERE chat_id = ? AND registered_at IS NULL",
+        (chat_id,)
+    )
     for key, val in kwargs.items():
         if key not in _ALLOWED_USER_COLS:
             logger.warning(f"save_user: ignoring unknown column '{key}'")
