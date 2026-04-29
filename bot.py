@@ -3471,10 +3471,11 @@ async def security_headers_middleware(request, handler):
     response.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; "
+        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://unpkg.com; "
         "connect-src 'self' https://www.google-analytics.com; "
         "img-src 'self' data: https://www.google-analytics.com; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
         "frame-ancestors 'none';"
     )
     return response
