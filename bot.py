@@ -2925,11 +2925,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
         keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
+    keyboard_rows.append([InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")])
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
-    keyboard_rows.append([
-        InlineKeyboardButton(t["btn_help"], callback_data="settings_help"),
-        InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")
-    ])
+    keyboard_rows.append([InlineKeyboardButton(t["btn_help"], callback_data="settings_help")])
     await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
 
 # ─── OAuth Web Server ─────────────────────────────────────────────────────────
