@@ -1691,6 +1691,10 @@ async def _cb_goal_delete(query, context, data: str, chat_id: int, lang: str):
         else:
             result_text = t["goal_deleted_tasks_kept"].format(n=n)
         await query.edit_message_text(result_text, parse_mode="Markdown")
+        # If no active goals remain — invite the user to create a new one
+        remaining = get_active_goals(chat_id)
+        if not remaining:
+            await query.message.reply_text(t["goals_empty"])
         return
     if data.startswith("gdel_cancel_"):
         goal_id = int(data.split("_")[2])
