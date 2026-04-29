@@ -308,6 +308,9 @@ _C = {
         "footer_privacy": "Политика конфиденциальности",
         "footer_contact": "Написать нам",
         "schema_desc": "Get My Task — AI-бот для Telegram, который превращает голосовые сообщения и текст в структурированные задачи с приоритетами, датами и синхронизацией с Google Calendar.",
+        "cookie_text": "Мы используем cookies для аналитики, чтобы улучшать сервис.",
+        "cookie_accept": "Принять",
+        "cookie_decline": "Отклонить",
     },
 
     "en": {
@@ -379,6 +382,9 @@ _C = {
         "footer_privacy": "Privacy Policy",
         "footer_contact": "Contact us",
         "schema_desc": "Get My Task is an AI Telegram bot that turns voice messages and text into structured tasks with priorities, dates and Google Calendar sync.",
+        "cookie_text": "We use cookies for analytics to improve the service.",
+        "cookie_accept": "Accept",
+        "cookie_decline": "Decline",
     },
 
     "uk": {
@@ -450,6 +456,9 @@ _C = {
         "footer_privacy": "Політика конфіденційності",
         "footer_contact": "Написати нам",
         "schema_desc": "Get My Task — AI-бот для Telegram, який перетворює голосові повідомлення і текст на структуровані задачі з пріоритетами, датами та синхронізацією з Google Calendar.",
+        "cookie_text": "Ми використовуємо cookies для аналітики, щоб покращувати сервіс.",
+        "cookie_accept": "Прийняти",
+        "cookie_decline": "Відхилити",
     },
 }
 
@@ -687,6 +696,30 @@ _CSS = """
     footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
     footer a:hover { color: var(--yellow); }
     .footer-copy { color: #4a4060; font-size: .78rem; }
+
+    /* Cookie consent banner */
+    #cookie-banner {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+      background: #1a1230; border-top: 1px solid var(--border);
+      padding: 14px 20px; display: flex; align-items: center;
+      justify-content: center; gap: 14px; flex-wrap: wrap;
+      font-size: .85rem; color: var(--text);
+    }
+    #cookie-banner p { margin: 0; flex: 1; min-width: 200px; }
+    #cookie-banner a { color: var(--muted); }
+    .cookie-btn {
+      padding: 7px 18px; border-radius: 8px; border: none;
+      font-size: .85rem; cursor: pointer; white-space: nowrap;
+    }
+    .cookie-btn-accept {
+      background: var(--purple); color: #fff;
+    }
+    .cookie-btn-accept:hover { background: var(--purple-l); }
+    .cookie-btn-decline {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .cookie-btn-decline:hover { color: var(--white); border-color: var(--muted); }
 """
 
 
@@ -731,6 +764,24 @@ def _page(lang: str, user_count: int = 0) -> str:
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json">{_schema_json(c, lang)}</script>
+
+  <!-- Google Analytics (loaded only after cookie consent) -->
+  <script>
+    window._GA_ID = 'G-2G3KF54HDS';
+    function _loadGA() {{
+      if (window._gaLoaded) return; window._gaLoaded = true;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + window._GA_ID;
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){{ dataLayer.push(arguments); }}
+      window.gtag = gtag;
+      gtag('js', new Date());
+      gtag('config', window._GA_ID, {{anonymize_ip: true}});
+    }}
+    if (localStorage.getItem('cookie_consent') === 'yes') {{ _loadGA(); }}
+  </script>
 
   <style>{_CSS}</style>
 </head>
@@ -791,6 +842,24 @@ def _page(lang: str, user_count: int = 0) -> str:
     </div>
     <div class="footer-copy">© {year} Get My Task. All rights reserved.</div>
   </footer>
+
+<!-- Cookie consent banner -->
+<div id="cookie-banner" style="display:none">
+  <p>{c['cookie_text']} <a href="/privacy">{c['footer_privacy']}</a></p>
+  <button class="cookie-btn cookie-btn-accept" onclick="_cookieConsent(true)">{c['cookie_accept']}</button>
+  <button class="cookie-btn cookie-btn-decline" onclick="_cookieConsent(false)">{c['cookie_decline']}</button>
+</div>
+<script>
+(function(){{
+  var b = document.getElementById('cookie-banner');
+  if (!localStorage.getItem('cookie_consent')) {{ b.style.display = 'flex'; }}
+}})();
+function _cookieConsent(yes) {{
+  localStorage.setItem('cookie_consent', yes ? 'yes' : 'no');
+  document.getElementById('cookie-banner').style.display = 'none';
+  if (yes) {{ _loadGA(); }}
+}}
+</script>
 
 <script>
 (function(){{
