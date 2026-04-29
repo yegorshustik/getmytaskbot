@@ -1124,7 +1124,8 @@ _CSS = """
     /* Footer */
     footer {
       margin-top: 64px; font-size: .82rem; color: var(--muted); text-align: center;
-      border-top: 1px solid var(--border); padding-top: 32px; width: 100%; max-width: 680px;
+      border-top: 1px solid var(--border); width: 100%;
+      padding: 32px 24px 32px;
     }
     .footer-links { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
     footer a { color: var(--muted); text-decoration: none; transition: color .15s; }
