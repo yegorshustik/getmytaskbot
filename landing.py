@@ -832,6 +832,7 @@ def _page(lang: str, user_count: int = 0) -> str:
     <!-- CTA repeat -->
     <div style="text-align:center;margin-bottom:8px;">
       <a class="btn" href="https://t.me/getmytask_bot" rel="noopener">{c['cta']}</a>
+      {f'<p class="social-proof">{c["social_proof"].format(n=user_count)}</p>' if user_count > 0 else ''}
     </div>
 
   </div>
