@@ -2409,7 +2409,7 @@ def get_stats_data(days=7):
     active      = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM events WHERE created_at >= ?", (since,)).fetchone()[0]
     # "new users" = users whose first activity falls in this period (last_active used as proxy)
     new_users   = conn.execute(
-        "SELECT COUNT(*) FROM users WHERE lang IS NOT NULL AND last_active >= ?", (since,)
+        "SELECT COUNT(*) FROM users WHERE lang IS NOT NULL AND registered_at >= ?", (since,)
     ).fetchone()[0]
     tasks_total = conn.execute("SELECT COUNT(*) FROM tasks WHERE created_at >= ?", (since,)).fetchone()[0]
     voice_total = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='voice_task' AND created_at >= ?", (since,)).fetchone()[0]
@@ -2461,13 +2461,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s7  = get_stats_data(days=7)
     s30 = get_stats_data(days=30)
 
-    # ── Reminders off block ───────────────────────────────────────────────────
-    off_ids = s7.get("reminders_off_ids", [])
-    if off_ids:
-        off_lines = "\n".join(f"  • `{uid}`" for uid in off_ids)
-        reminders_off_block = f"\n\n*🔕 Отключили уведомления ({len(off_ids)}):*\n{off_lines}"
-    else:
-        reminders_off_block = "\n\n*🔕 Отключили уведомления:* нет"
+    # ── Reminders off count (shown inline in summary) ────────────────────────
+    off_count = len(s7.get("reminders_off_ids", []))
 
     # ── Users list ────────────────────────────────────────────────────────────
     import html as _html
@@ -2500,19 +2495,21 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "📊 *Статистика Get My Task*\n\n"
         f"👥 Всего пользователей: *{s7['total_users']}*\n"
-        f"📅 С Google Calendar: *{s7['cal_users']}*\n\n"
+        f"📅 С Google Calendar: *{s7['cal_users']}*\n"
+        f"🔕 Отключили уведомления: *{off_count}*\n\n"
         f"*Активность:*\n"
         f"• DAU (сегодня): *{s1['dau']}*\n"
         f"• WAU (7 дней): *{s7['active']}*\n"
         f"• MAU (30 дней): *{s30['active']}*\n\n"
-        f"*Активные пользователи (7 дней): {s7['new_users']}*\n\n"
+        f"*Новые пользователи:*\n"
+        f"• За 7 дней: *{s7['new_users']}*\n"
+        f"• За 30 дней: *{s30['new_users']}*\n\n"
         f"*Задачи созданы:*\n"
         f"• Сегодня: *{s1['tasks_total']}*\n"
         f"• За 7 дней: *{s7['tasks_total']}*\n\n"
         f"*Голосовые:*\n"
         f"• Сегодня: *{s1['voice_total']}*\n"
         f"• За 7 дней: *{s7['voice_total']}*"
-        + reminders_off_block
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
