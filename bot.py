@@ -1824,28 +1824,57 @@ async def _cb_settings(query, context, data: str, chat_id: int, lang: str, user)
         return
     if data == "settings_apple_cal":
         user_obj = get_user(chat_id)
-        already_subscribed = bool(user_obj and user_obj.get("ical_token"))
         token = user_obj.get("ical_token") if user_obj else None
-        if not token:
-            token = secrets.token_urlsafe(24)
-            save_user(chat_id, ical_token=token)
-        open_url = f"{BASE_URL}/ical-open/{token}"
         gcal_connected = bool(user_obj and user_obj.get("calendar_connected"))
         info_text = t["apple_cal_info_gcal"] if gcal_connected else t["apple_cal_info"]
-        if already_subscribed:
+        if token:
+            # Subscribed — show active state + disconnect option
+            open_url = f"{BASE_URL}/ical-open/{token}"
             info_text = f"{t['apple_cal_status']}\n\n" + info_text
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)],
                 [InlineKeyboardButton(t["btn_apple_cal_disconnect"], callback_data="apple_cal_disconnect")],
             ])
         else:
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)]])
+            # Not subscribed — show info + connect button (token created only on explicit tap)
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t["btn_apple_cal_connect"], callback_data="apple_cal_connect")],
+            ])
         await query.message.reply_text(info_text, parse_mode="Markdown", reply_markup=keyboard)
+        return
+    if data == "apple_cal_connect":
+        # Generate token now that user explicitly wants to subscribe
+        token = secrets.token_urlsafe(24)
+        save_user(chat_id, ical_token=token)
+        open_url = f"{BASE_URL}/ical-open/{token}"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)],
+            [InlineKeyboardButton(t["btn_apple_cal_disconnect"], callback_data="apple_cal_disconnect")],
+        ])
+        await query.edit_message_reply_markup(reply_markup=keyboard)
         return
     if data == "apple_cal_disconnect":
         save_user(chat_id, ical_token=None)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(t["apple_cal_disconnected"])
+        # Show calendar choice so user can reconnect or switch to Google
+        gcal_connected = bool(get_user(chat_id) and get_user(chat_id).get("calendar_connected"))
+        if not gcal_connected:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")],
+                [InlineKeyboardButton(t["btn_apple_cal_connect"], callback_data="apple_cal_connect_fresh")],
+            ])
+            await query.message.reply_text(t["calendar_choose"], reply_markup=keyboard)
+        return
+    if data == "apple_cal_connect_fresh":
+        token = secrets.token_urlsafe(24)
+        save_user(chat_id, ical_token=token)
+        open_url = f"{BASE_URL}/ical-open/{token}"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)],
+            [InlineKeyboardButton(t["btn_apple_cal_disconnect"], callback_data="apple_cal_disconnect")],
+        ])
+        await query.edit_message_reply_markup(reply_markup=keyboard)
         return
     if data == "settings_archive" or data.startswith("archive_page_"):
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2360,7 +2389,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_calendar_connect(query, context, data, chat_id, lang, user)
     if (data.startswith("settings_") or data.startswith("reminder_") or data == "reminder_disable"
             or data.startswith("archive_page_") or data.startswith("set_remind_min_")
-            or data == "apple_cal_disconnect"):
+            or data in ("apple_cal_disconnect", "apple_cal_connect", "apple_cal_connect_fresh")):
         return await _cb_settings(query, context, data, chat_id, lang, user)
     if data.startswith("tz_"):
         return await _cb_tz(query, context, data, chat_id, lang)
