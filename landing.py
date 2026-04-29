@@ -1496,7 +1496,7 @@ def _page(lang: str, user_count: int = 0) -> str:
         <a href="/?lang=en"{active['en']}>EN</a>
         <a href="/?lang=uk"{active['uk']}>UK</a>
       </div>
-      <a href="https://t.me/getmytask_bot?start=landing" class="nav-cta" target="_blank" rel="noopener">{c['cta']}</a>
+      <a href="https://t.me/getmytask_bot?start=landing_nav" class="nav-cta" target="_blank" rel="noopener" onclick="if(window.gtag){{gtag('event','cta_click',{{cta_location:'nav',lang:'{lang}'}});}}">{c['cta']}</a>
     </div>
   </div>
 </nav>
@@ -1509,7 +1509,7 @@ def _page(lang: str, user_count: int = 0) -> str:
     <p class="section-label" style="margin-bottom:16px;">AI Task &amp; Goal Manager</p>
     <p class="hero-sub">{c['desc']}</p>
     <div class="hero-actions">
-      <a href="https://t.me/getmytask_bot?start=landing" class="btn-primary" target="_blank" rel="noopener">{tg_icon}{c['cta']}</a>
+      <a href="https://t.me/getmytask_bot?start=landing_hero" class="btn-primary" target="_blank" rel="noopener" onclick="if(window.gtag){{gtag('event','cta_click',{{cta_location:'hero',lang:'{lang}'}});}}"> {tg_icon}{c['cta']}</a>
       <div class="hero-stats">
         {social_html}
         <span class="hero-social" id="tasks-count" style="display:none">
@@ -1556,7 +1556,7 @@ def _page(lang: str, user_count: int = 0) -> str:
     <div class="cta-card">
       <h2>{c['cta_title']}</h2>
       <p>{c['cta_desc']}</p>
-      <a href="https://t.me/getmytask_bot?start=landing" class="btn-primary" target="_blank" rel="noopener">{tg_icon}{c['cta']}</a>
+      <a href="https://t.me/getmytask_bot?start=landing_cta" class="btn-primary" target="_blank" rel="noopener" onclick="if(window.gtag){{gtag('event','cta_click',{{cta_location:'cta_banner',lang:'{lang}'}});}}">{tg_icon}{c['cta']}</a>
     </div>
   </div>
 </section>
