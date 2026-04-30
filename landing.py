@@ -1201,7 +1201,7 @@ body { font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif; ba
 
 nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1px solid var(--border); backdrop-filter: blur(24px); background: oklch(9% 0.01 260 / 0.7); }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; }
-.nav-logo { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+.nav-logo { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; white-space: nowrap; flex-shrink: 0; }
 .nav-logo .logo-svg { height: 28px; width: 28px; border-radius: 7px; overflow: hidden; display: block; flex-shrink: 0; }
 .nav-langs { display: flex; gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
 .nav-langs a { color: var(--text3); text-decoration: none; font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 6px; border: 1px solid transparent; transition: all 0.18s; letter-spacing: 0.04em; font-family: "DM Mono", monospace; }
