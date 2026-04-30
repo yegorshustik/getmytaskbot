@@ -993,8 +993,10 @@ def _personas_html(c):
         icon = _PERSONA_ICONS[i % len(_PERSONA_ICONS)]
         parts.append(
             f'<div class="for-card">'
+            f'<div class="for-card-header">'
             f'<div class="for-icon"><i data-lucide="{icon}"></i></div>'
             f'<h3>{title}</h3>'
+            f'</div>'
             f'<p>{text}</p>'
             f'</div>'
         )
@@ -1245,14 +1247,15 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .for-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, oklch(62% 0.22 280 / 0.4), transparent); opacity: 0; transition: opacity 0.3s; }
 .for-card:hover { border-color: var(--border2); transform: translateY(-3px); background: oklch(16% 0.02 260 / 0.8); }
 .for-card:hover::before { opacity: 1; }
-.for-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+.for-card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.for-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .for-icon i { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.75; }
 .for-card:nth-child(1) .for-icon { color: oklch(72% 0.2 55); }
 .for-card:nth-child(2) .for-icon { color: oklch(68% 0.18 240); }
 .for-card:nth-child(3) .for-icon { color: oklch(70% 0.18 155); }
 .for-card:nth-child(4) .for-icon { color: oklch(68% 0.2 310); }
-.for-card h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; }
-.for-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+.for-card h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin: 0; line-height: 1.3; }
+.for-card p { font-size: 14px; color: var(--text2); line-height: 1.6; margin: 0; }
 
 .problems-section { padding: 28px 0; }
 .problems-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
