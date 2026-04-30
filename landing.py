@@ -676,7 +676,7 @@ _C = {
     "ru": {
         "lang_html": "ru",
         "tagline": "AI-менеджер задач и целей",
-        "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google Calendar",
+        "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google и Apple Calendar",
         "cta": "Попробовать бесплатно →",
         "social_proof": "{n} активных пользователей",
 
@@ -684,14 +684,14 @@ _C = {
         "personas": [
             ("🚀", "Предприниматели", "Фиксируй идеи голосом за рулём — бот сразу превратит их в задачи с датами"),
             ("📋", "Менеджеры", "Управляй проектами и целями прямо в Telegram без переключения между приложениями"),
-            ("💻", "Фрилансеры", "Планируй дедлайны и синхронизируй задачи с Google Calendar одним нажатием"),
+            ("💻", "Фрилансеры", "Планируй дедлайны и синхронизируй задачи с Google или Apple Calendar одним нажатием"),
             ("🎯", "Все, кто ставит цели", "Создавай SMART-цели, декомпозируй на задачи и отслеживай прогресс"),
         ],
 
         "problems_title": "Какие проблемы решает",
         "problems": [
             ("😤", "Идеи теряются", "Пришла мысль — надиктовал голосовое. Бот сам выделит задачи, расставит приоритеты и предложит дату."),
-            ("😵", "Задачи разбросаны по мессенджерам", "Всё в одном месте: задачи, цели, напоминания и Google Calendar — прямо в Telegram."),
+            ("😵", "Задачи разбросаны по мессенджерам", "Всё в одном месте: задачи, цели, напоминания и синхронизация с Calendar — прямо в Telegram."),
             ("😓", "Нет системы приоритетов", "Матрица Эйзенхауэра автоматически делит задачи на важные/срочные — ты видишь, что делать сейчас, а что подождёт."),
         ],
 
@@ -699,7 +699,7 @@ _C = {
         "features": [
             ("🎙", "Голосовой ввод", "Надиктуй список дел — Whisper AI транскрибирует и выделит каждую задачу отдельно"),
             ("📊", "Матрица Эйзенхауэра", "Q1–Q4 автоматически: важно/срочно, важно/не срочно, не важно/срочно, остальное"),
-            ("📅", "Google Calendar", "Добавляй задачи в календарь одним нажатием, с временем и напоминанием"),
+            ("📅", "Google & Apple Calendar", "Добавляй задачи в Google или Apple Calendar одним нажатием, с временем и напоминанием"),
             ("🔔", "Умные напоминания", "Утренний дайджест задач на день + уведомление за N минут до начала"),
             ("🎯", "Цели (SMART)", "Ставь цели с дедлайном и критериями, связывай с задачами, отслеживай прогресс"),
             ("🔁", "Повторяющиеся задачи", "Ежедневные и еженедельные задачи из Google Calendar в утреннем дайджесте"),
@@ -711,7 +711,7 @@ _C = {
         "facts": [
             ("3", "языка интерфейса"),
             ("4", "квадранта приоритетов"),
-            ("1", "нажатие до Google Calendar"),
+            ("1", "нажатие до Calendar"),
             ("0", "лишних приложений"),
         ],
 
@@ -725,8 +725,8 @@ _C = {
              "Каждое утро бот присылает дайджест — список всех задач на сегодня с временем и приоритетами. За 30 минут до начала задачи приходит напоминание прямо в Telegram. Можно отметить выполненным или перенести одним нажатием — не выходя из чата."),
             ("Можно ли поставить цель и разбить её на задачи в боте?",
              "Да. В Get My Task есть отдельный режим целей: задаёшь цель с дедлайном и критерием успеха — например «Запустить сайт до 1 июня». Затем добавляешь связанные задачи. Бот показывает прогресс и уведомляет, когда все задачи по цели выполнены."),
-            ("Get My Task синхронизируется с Google Calendar?",
-             "Да. Подключи Google Calendar в настройках бота за 30 секунд — и любую задачу с датой и временем можно добавить в календарь одним нажатием. Если перенести задачу командой боту, дата в Google Calendar тоже обновится автоматически."),
+            ("Get My Task синхронизируется с Google и Apple Calendar?",
+             "Да. В настройках бота выбери Google или Apple Calendar — подключение занимает 30 секунд. Любую задачу с датой и временем можно добавить в календарь одним нажатием. Если перенести задачу командой боту, дата в Google Calendar обновится автоматически. Apple Calendar поддерживает живую подписку — задачи появляются сами, раз в час."),
             ("Как работает приоритизация задач по матрице Эйзенхауэра?",
              "Каждая задача автоматически попадает в один из 4 квадрантов: Q1 (важно и срочно — делай сейчас), Q2 (важно, не срочно — запланируй), Q3 (срочно, не важно — делегируй), Q4 (не важно и не срочно — удали). AI определяет квадрант по контексту задачи — тебе ничего не нужно настраивать вручную."),
             ("Можно ли перенести задачу голосом или текстом?",
@@ -770,7 +770,7 @@ _C = {
 
         "free_title": "Полностью бесплатно",
         "free_desc": "Все функции доступны без оплаты и без лимитов",
-        "free_features": ["Голосовой ввод", "Матрица Эйзенхауэра", "Google Calendar", "SMART-цели", "Напоминания", "Утренний дайджест"],
+        "free_features": ["Голосовой ввод", "Матрица Эйзенхауэра", "Google & Apple Calendar", "SMART-цели", "Напоминания", "Утренний дайджест"],
 
         "footer_bot": "Открыть бота",
     },
@@ -778,7 +778,7 @@ _C = {
     "en": {
         "lang_html": "en",
         "tagline": "AI Task & Goal Manager",
-        "desc": "Voice notes and texts → tasks, goals & Google Calendar sync",
+        "desc": "Voice notes and texts → tasks, goals & Google / Apple Calendar sync",
         "cta": "Try for free →",
         "social_proof": "{n} active users",
 
@@ -786,14 +786,14 @@ _C = {
         "personas": [
             ("🚀", "Entrepreneurs", "Capture ideas by voice while driving — the bot instantly turns them into dated tasks"),
             ("📋", "Managers", "Manage projects and goals right inside Telegram without switching apps"),
-            ("💻", "Freelancers", "Plan deadlines and sync tasks with Google Calendar in one tap"),
+            ("💻", "Freelancers", "Plan deadlines and sync tasks with Google or Apple Calendar in one tap"),
             ("🎯", "Goal setters", "Create SMART goals, break them into tasks, and track progress automatically"),
         ],
 
         "problems_title": "Problems it solves",
         "problems": [
             ("😤", "Ideas get lost", "Had a thought? Dictate a voice note. The bot extracts tasks, sets priorities and suggests a date."),
-            ("😵", "Tasks scattered across apps", "Everything in one place: tasks, goals, reminders and Google Calendar — right inside Telegram."),
+            ("😵", "Tasks scattered across apps", "Everything in one place: tasks, goals, reminders and calendar sync — right inside Telegram."),
             ("😓", "No priority system", "The Eisenhower Matrix automatically sorts tasks by importance and urgency — you always know what to do next."),
         ],
 
@@ -801,7 +801,7 @@ _C = {
         "features": [
             ("🎙", "Voice input", "Dictate a to-do list — Whisper AI transcribes and extracts each task separately"),
             ("📊", "Eisenhower Matrix", "Q1–Q4 automatically: urgent/important, not urgent/important, urgent/not important, the rest"),
-            ("📅", "Google Calendar", "Add tasks to your calendar in one tap, with time and reminder"),
+            ("📅", "Google & Apple Calendar", "Add tasks to Google or Apple Calendar in one tap, with time and reminder"),
             ("🔔", "Smart reminders", "Morning digest of today's tasks + notification N minutes before each task starts"),
             ("🎯", "SMART Goals", "Set goals with deadlines and criteria, link tasks to them, track progress"),
             ("🔁", "Recurring tasks", "Daily and weekly tasks from Google Calendar appear in your morning digest"),
@@ -813,7 +813,7 @@ _C = {
         "facts": [
             ("3", "interface languages"),
             ("4", "priority quadrants"),
-            ("1", "tap to Google Calendar"),
+            ("1", "tap to Calendar"),
             ("0", "extra apps needed"),
         ],
 
@@ -827,8 +827,8 @@ _C = {
              "Every morning the bot sends a digest — all of today's tasks with times and priorities. Before each task starts, you get a reminder right in Telegram. You can mark it done or reschedule with one tap, without leaving the chat."),
             ("Can I set a goal and break it down into tasks?",
              "Yes. Get My Task has a dedicated goals mode: set a goal with a deadline and success criteria — e.g. 'Launch the website by June 1.' Then add linked tasks. The bot tracks progress and notifies you when all tasks under a goal are completed."),
-            ("Does Get My Task sync with Google Calendar?",
-             "Yes. Connect Google Calendar in bot settings in 30 seconds — then any task with a date and time can be added to your calendar in one tap. If you reschedule a task via the bot, the Google Calendar event updates automatically too."),
+            ("Does Get My Task sync with Google and Apple Calendar?",
+             "Yes. In bot settings, choose Google or Apple Calendar — setup takes 30 seconds. Any task with a date and time can be added to your calendar in one tap. Google Calendar updates automatically when you reschedule a task. Apple Calendar uses a live subscription — tasks appear automatically, refreshing every hour."),
             ("How does the Eisenhower Matrix prioritisation work?",
              "Every task is automatically placed in one of 4 quadrants: Q1 (urgent & important — do now), Q2 (important, not urgent — schedule), Q3 (urgent, not important — delegate), Q4 (neither — drop). The AI infers the quadrant from the task context — you don't configure anything manually."),
             ("Can I reschedule a task by voice or text?",
@@ -872,7 +872,7 @@ _C = {
 
         "free_title": "Completely free",
         "free_desc": "All features available with no payment and no limits",
-        "free_features": ["Voice input", "Eisenhower Matrix", "Google Calendar", "SMART Goals", "Reminders", "Morning digest"],
+        "free_features": ["Voice input", "Eisenhower Matrix", "Google & Apple Calendar", "SMART Goals", "Reminders", "Morning digest"],
 
         "footer_bot": "Open bot",
     },
@@ -880,7 +880,7 @@ _C = {
     "uk": {
         "lang_html": "uk",
         "tagline": "AI-менеджер задач і цілей",
-        "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google Calendar",
+        "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google і Apple Calendar",
         "cta": "Спробувати безкоштовно →",
         "social_proof": "{n} активних користувачів",
 
@@ -888,14 +888,14 @@ _C = {
         "personas": [
             ("🚀", "Підприємці", "Фіксуй ідеї голосом за кермом — бот одразу перетворить їх на задачі з датами"),
             ("📋", "Менеджери", "Керуй проектами і цілями прямо в Telegram без перемикання між застосунками"),
-            ("💻", "Фрілансери", "Плануй дедлайни і синхронізуй задачі з Google Calendar одним натисканням"),
+            ("💻", "Фрілансери", "Плануй дедлайни і синхронізуй задачі з Google або Apple Calendar одним натисканням"),
             ("🎯", "Всі, хто ставить цілі", "Створюй SMART-цілі, розбивай на задачі та відстежуй прогрес"),
         ],
 
         "problems_title": "Які проблеми вирішує",
         "problems": [
             ("😤", "Ідеї губляться", "Прийшла думка — надиктував голосове. Бот сам виділить задачі, розставить пріоритети і запропонує дату."),
-            ("😵", "Задачі розкидані по месенджерах", "Все в одному місці: задачі, цілі, нагадування і Google Calendar — прямо в Telegram."),
+            ("😵", "Задачі розкидані по месенджерах", "Все в одному місці: задачі, цілі, нагадування і синхронізація з Calendar — прямо в Telegram."),
             ("😓", "Немає системи пріоритетів", "Матриця Ейзенхауера автоматично ділить задачі на важливі/термінові — ти бачиш, що робити зараз, а що зачекає."),
         ],
 
@@ -903,7 +903,7 @@ _C = {
         "features": [
             ("🎙", "Голосове введення", "Надиктуй список справ — Whisper AI транскрибує і виділить кожну задачу окремо"),
             ("📊", "Матриця Ейзенхауера", "Q1–Q4 автоматично: важливо/терміново, важливо/не терміново, не важливо/терміново, решта"),
-            ("📅", "Google Calendar", "Додавай задачі в календар одним натисканням, з часом і нагадуванням"),
+            ("📅", "Google & Apple Calendar", "Додавай задачі в Google або Apple Calendar одним натисканням, з часом і нагадуванням"),
             ("🔔", "Розумні нагадування", "Ранковий дайджест задач на день + сповіщення за N хвилин до початку"),
             ("🎯", "Цілі (SMART)", "Став цілі з дедлайном і критеріями, пов'язуй із задачами, відстежуй прогрес"),
             ("🔁", "Повторювані задачі", "Щоденні та щотижневі задачі з Google Calendar у ранковому дайджесті"),
@@ -915,7 +915,7 @@ _C = {
         "facts": [
             ("3", "мови інтерфейсу"),
             ("4", "квадранти пріоритетів"),
-            ("1", "натискання до Google Calendar"),
+            ("1", "натискання до Calendar"),
             ("0", "зайвих застосунків"),
         ],
 
@@ -929,8 +929,8 @@ _C = {
              "Щоранку бот надсилає дайджест — список усіх задач на сьогодні з часом і пріоритетами. За 30 хвилин до початку задачі приходить нагадування прямо в Telegram. Можна відмітити виконаним або перенести одним натисканням, не виходячи з чату."),
             ("Чи можна поставити ціль і розбити її на задачі у боті?",
              "Так. У Get My Task є окремий режим цілей: задаєш ціль із дедлайном і критерієм успіху — наприклад «Запустити сайт до 1 червня». Потім додаєш пов'язані задачі. Бот показує прогрес і сповіщає, коли всі задачі по цілі виконані."),
-            ("Get My Task синхронізується з Google Calendar?",
-             "Так. Підключи Google Calendar у налаштуваннях бота за 30 секунд — і будь-яку задачу з датою і часом можна додати в календар одним натисканням. Якщо перенести задачу командою боту, дата в Google Calendar теж оновиться автоматично."),
+            ("Get My Task синхронізується з Google і Apple Calendar?",
+             "Так. У налаштуваннях бота обери Google або Apple Calendar — підключення займає 30 секунд. Будь-яку задачу з датою і часом можна додати в календар одним натисканням. Google Calendar оновлюється автоматично при перенесенні задачі. Apple Calendar працює через живу підписку — задачі з'являються самі, раз на годину."),
             ("Як працює пріоритизація задач за матрицею Ейзенхауера?",
              "Кожна задача автоматично потрапляє в один із 4 квадрантів: Q1 (важливо і терміново — роби зараз), Q2 (важливо, не терміново — сплануй), Q3 (терміново, не важливо — делегуй), Q4 (не важливо і не терміново — видали). AI визначає квадрант за контекстом задачі — нічого налаштовувати вручну не потрібно."),
             ("Чи можна перенести задачу голосом або текстом?",
@@ -974,7 +974,7 @@ _C = {
 
         "free_title": "Повністю безкоштовно",
         "free_desc": "Всі функції доступні без оплати та без лімітів",
-        "free_features": ["Голосовий ввід", "Матриця Ейзенхауера", "Google Calendar", "SMART-цілі", "Нагадування", "Ранковий дайджест"],
+        "free_features": ["Голосовий ввід", "Матриця Ейзенхауера", "Google & Apple Calendar", "SMART-цілі", "Нагадування", "Ранковий дайджест"],
 
         "footer_bot": "Відкрити бота",
     },
