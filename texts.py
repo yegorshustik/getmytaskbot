@@ -240,6 +240,11 @@ TEXTS = {
         ],
         "reminder_ask": "⏰ За сколько минут напоминать о задачах?",
         "reminder_ask_set": "✅ Буду напоминать за {min} мин до задачи.",
+        "deletedata_warning": "⚠️ Это безвозвратно удалит все ваши данные: задачи, цели, настройки.\n\nВы уверены?",
+        "deletedata_confirm": "🗑 Да, удалить всё",
+        "deletedata_cancel": "❌ Отмена",
+        "deletedata_done": "✅ Все ваши данные удалены. Используйте /start, чтобы зарегистрироваться снова.",
+        "deletedata_cancelled": "❌ Удаление отменено.",
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -478,6 +483,11 @@ TEXTS = {
         ],
         "reminder_ask": "⏰ How many minutes before a task should I remind you?",
         "reminder_ask_set": "✅ I'll remind you {min} min before each task.",
+        "deletedata_warning": "⚠️ This will permanently delete all your data: tasks, goals, and settings.\n\nAre you sure?",
+        "deletedata_confirm": "🗑 Yes, delete everything",
+        "deletedata_cancel": "❌ Cancel",
+        "deletedata_done": "✅ All your data has been deleted. Use /start to register again.",
+        "deletedata_cancelled": "❌ Deletion cancelled.",
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -716,6 +726,11 @@ TEXTS = {
         ],
         "reminder_ask": "⏰ За скільки хвилин нагадувати про задачі?",
         "reminder_ask_set": "✅ Нагадуватиму за {min} хв до задачі.",
+        "deletedata_warning": "⚠️ Це безповоротно видалить усі ваші дані: задачі, цілі, налаштування.\n\nВи впевнені?",
+        "deletedata_confirm": "🗑 Так, видалити все",
+        "deletedata_cancel": "❌ Скасувати",
+        "deletedata_done": "✅ Усі ваші дані видалені. Використайте /start для повторної реєстрації.",
+        "deletedata_cancelled": "❌ Видалення скасовано.",
     },
 }
 

@@ -2403,6 +2403,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_move_task(query, context, data, chat_id, lang, user)
     if data.startswith("rd_"):
         return await _cb_reminder_action(query, context, data, chat_id, lang, user)
+    if data in ("deletedata_confirm", "deletedata_cancel"):
+        return await _cb_deletedata(query, context, data, chat_id, lang)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
 
 
@@ -2900,6 +2902,38 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     lang = user["lang"] if user else "ru"
     await update.message.reply_text(TEXTS[lang]["help"], parse_mode="Markdown")
+
+
+async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    t = TEXTS[lang]
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(t["deletedata_confirm"], callback_data="deletedata_confirm"),
+            InlineKeyboardButton(t["deletedata_cancel"], callback_data="deletedata_cancel"),
+        ]
+    ])
+    await update.message.reply_text(t["deletedata_warning"], reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def _cb_deletedata(query, context, data: str, chat_id: int, lang: str):
+    t = TEXTS[lang]
+    if data == "deletedata_confirm":
+        conn = sqlite3.connect("users.db")
+        conn.execute("DELETE FROM tasks WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM goals WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM recurring_tasks WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM sent_reminders WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM events WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM users WHERE chat_id=?", (chat_id,))
+        conn.commit()
+        conn.close()
+        await query.edit_message_text(t["deletedata_done"])
+    else:
+        await query.edit_message_text(t["deletedata_cancelled"])
+
 
 async def _send_tasks_grouped(update, chat_id: int, lang: str):
     """Shared logic for tasks_command and mytasks_command."""
@@ -3593,6 +3627,7 @@ async def main():
     bot_app.add_handler(CommandHandler("admin", stats_command))
     bot_app.add_handler(CommandHandler("announce", announce_command))
     bot_app.add_handler(CommandHandler("goals", goals_command))
+    bot_app.add_handler(CommandHandler("deletedata", deletedata_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     bot_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     bot_app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
