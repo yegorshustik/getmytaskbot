@@ -3476,6 +3476,105 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 async def privacy_policy(request):
     return web.Response(text=PRIVACY_POLICY_HTML, content_type="text/html", charset="utf-8")
 
+
+TERMS_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Terms of Service — Get My Task</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f0f0f;color:#e0e0e0;line-height:1.7;padding:40px 20px}
+    .wrap{max-width:720px;margin:0 auto}
+    h1{font-size:2rem;font-weight:700;margin-bottom:8px;color:#fff}
+    .sub{color:#888;font-size:.95rem;margin-bottom:40px}
+    h2{font-size:1.15rem;font-weight:600;color:#fff;margin:32px 0 10px}
+    p,li{color:#ccc;font-size:.97rem}
+    ul{padding-left:20px;margin-top:6px}
+    li{margin-bottom:4px}
+    a{color:#7c9ef5;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;
+          padding:24px;margin-top:40px;font-size:.9rem;color:#888}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Terms of Service</h1>
+  <p class="sub">Get My Task Bot &nbsp;·&nbsp; Last updated: April 2026</p>
+
+  <h2>1. Acceptance of Terms</h2>
+  <p>By using the Get My Task Telegram bot ("the Service"), you agree to these Terms of Service.
+  If you do not agree, please discontinue use of the Service.</p>
+
+  <h2>2. Description of Service</h2>
+  <p>Get My Task is a Telegram bot that helps you capture, organize, and manage tasks using
+  voice or text input. The Service optionally integrates with Google Calendar and Apple Calendar
+  to synchronize your tasks.</p>
+
+  <h2>3. Eligibility</h2>
+  <p>You must be at least 13 years old to use the Service. By using it, you confirm that you
+  meet this requirement.</p>
+
+  <h2>4. User Responsibilities</h2>
+  <ul>
+    <li>You are responsible for the content of tasks you create</li>
+    <li>You must not use the Service for any unlawful purpose</li>
+    <li>You must not attempt to abuse, overload, or reverse-engineer the Service</li>
+    <li>You are responsible for maintaining the security of your Telegram account</li>
+  </ul>
+
+  <h2>5. Google Calendar Integration</h2>
+  <p>If you choose to connect Google Calendar, you authorize Get My Task to create and read
+  calendar events on your behalf using Google's OAuth 2.0 protocol. We request only the
+  permissions necessary to add tasks to your calendar. You can revoke this access at any time
+  via <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>
+  or through the bot settings.</p>
+
+  <h2>6. Data and Privacy</h2>
+  <p>Your use of the Service is also governed by our
+  <a href="/privacy">Privacy Policy</a>, which is incorporated into these Terms by reference.</p>
+
+  <h2>7. Availability</h2>
+  <p>We strive to keep the Service available at all times but do not guarantee uninterrupted
+  access. The Service may be temporarily unavailable due to maintenance, updates, or factors
+  beyond our control.</p>
+
+  <h2>8. Modifications to the Service</h2>
+  <p>We reserve the right to modify, suspend, or discontinue any part of the Service at any
+  time. We will make reasonable efforts to notify users of significant changes via the bot.</p>
+
+  <h2>9. Disclaimer of Warranties</h2>
+  <p>The Service is provided "as is" without warranties of any kind. We do not guarantee that
+  the Service will be error-free or that tasks will always sync correctly with third-party
+  calendar services.</p>
+
+  <h2>10. Limitation of Liability</h2>
+  <p>To the fullest extent permitted by law, Get My Task shall not be liable for any indirect,
+  incidental, or consequential damages arising from your use of the Service, including loss of
+  data or missed reminders.</p>
+
+  <h2>11. Changes to Terms</h2>
+  <p>We may update these Terms from time to time. Continued use of the Service after changes
+  are posted constitutes acceptance of the new Terms.</p>
+
+  <h2>12. Contact</h2>
+  <p>If you have any questions about these Terms, please contact:<br/>
+  <a href="mailto:hello.egour@gmail.com">hello.egour@gmail.com</a></p>
+
+  <div class="card">
+    Get My Task is an independent project and is not affiliated with Google, Apple, or Telegram.
+  </div>
+</div>
+</body>
+</html>"""
+
+
+async def terms_of_service(request):
+    return web.Response(text=TERMS_HTML, content_type="text/html", charset="utf-8")
+
 async def health_check(request):
     """Simple liveness endpoint for uptime monitors."""
     try:
@@ -3593,6 +3692,7 @@ async def start_web_server():
     app.router.add_get("/googled2363927b56587ef.html", google_verification)
     app.router.add_get("/oauth/callback", oauth_callback)
     app.router.add_get("/privacy", privacy_policy)
+    app.router.add_get("/terms", terms_of_service)
     app.router.add_get("/robots.txt", robots_txt)
     app.router.add_get("/sitemap.xml", sitemap_xml)
     app.router.add_get("/llms.txt", llms_txt)
