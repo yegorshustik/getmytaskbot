@@ -4,11 +4,11 @@
 
 ```
 getmytaskbot/
-├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3620 строк
-├── db.py               # SQLite-слой, все операции с БД               ~415 строк
-├── calendar_utils.py   # Google Calendar API, OAuth/PKCE, iCal        ~240 строк
-├── texts.py            # Все локализованные строки (ru/en/uk)         ~695 строк
-├── landing.py          # HTML лендинга (get_home_html + assets)       ~1775 строк
+├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3690 строк
+├── db.py               # SQLite-слой, все операции с БД               ~413 строк
+├── calendar_utils.py   # Google Calendar API, OAuth/PKCE, iCal        ~272 строк
+├── texts.py            # Все локализованные строки (ru/en/uk)         ~739 строк
+├── landing.py          # HTML лендинга (get_home_html + assets)       ~1774 строк
 ├── tests/
 │   ├── conftest.py     # Моки тяжёлых зависимостей
 │   ├── test_logic.py   # 38 unit-тестов на чистую логику
@@ -98,7 +98,8 @@ _cu.init(BASE_URL)
 | `_cb_goal_delete` | `gdel_*` |
 | `_cb_announce` | `announce_*` |
 | `_cb_calendar_connect` | `connect_calendar`, `disconnect_calendar`, `skip_calendar` |
-| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*`, `apple_cal_connect`, `apple_cal_connect_fresh`, `apple_cal_disconnect` |
+| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*`, `apple_cal_connect`, `apple_cal_disconnect` |
+| `_cb_deletedata` | `deletedata_confirm`, `deletedata_cancel` |
 | `_cb_tz` | `tz_*` |
 | `_cb_ics` | `ics_*` |
 | `_cb_recur` | `recur_*` |
@@ -138,6 +139,9 @@ make hooks    # активировать pre-commit хук
 - Меню команд: порядок start→tasks→goals→settings, `/timezone` убрана из меню (доступна из `/settings`)
 - Кнопки "Перенести задачу": заменены на +1ч / +3ч / завтра
 - После удаления последней цели — автоматический промпт создать новую
+- Команда `/deletedata`: удаление всех данных пользователя с двухшаговым подтверждением на языке пользователя; `_cb_deletedata` удаляет строки из tasks, goals, recurring_tasks, sent_reminders, events, users
+- Кнопка `/deletedata` исправляет баг: ранее сообщение подтверждения всегда отправлялось на английском
+- Календарь в настройках: две кнопки (Google + Apple) объединены в одну `📅 Подключить календарь` с тремя состояниями (ничего / Google подключён / Apple подключён); после отключения любого календаря → экран выбора; `apple_cal_connect_fresh` удалён как избыточный; добавлен callback `settings_cal_choose`
 
 ---
 
