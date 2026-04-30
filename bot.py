@@ -3060,7 +3060,39 @@ async def oauth_callback(request):
                 await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             pass
-    return web.Response(text="✅ Calendar connected! You can close this tab.")
+    oauth_success_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Get My Task — Calendar Connected</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f0f0f;color:#e0e0e0;min-height:100vh;
+         display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;
+          padding:40px 32px;max-width:360px;width:100%;text-align:center}
+    .icon{font-size:3rem;margin-bottom:16px}
+    h1{font-size:1.4rem;font-weight:700;color:#fff;margin-bottom:10px}
+    p{color:#999;font-size:.95rem;line-height:1.6;margin-bottom:24px}
+    .btn{display:inline-block;background:#2f80ed;color:#fff;text-decoration:none;
+         padding:12px 28px;border-radius:12px;font-size:.95rem;font-weight:600}
+    .btn:hover{background:#1a6fd4}
+    .hint{color:#555;font-size:.82rem;margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Google Calendar connected!</h1>
+    <p>Your tasks will now automatically appear in your calendar. You can close this tab and return to the bot.</p>
+    <a class="btn" href="https://t.me/getmytaskbot">← Back to Get My Task</a>
+    <p class="hint">You can safely close this tab</p>
+  </div>
+</body>
+</html>"""
+    return web.Response(text=oauth_success_html, content_type="text/html", charset="utf-8")
 
 async def home_page(request):
     lang = request.rel_url.query.get("lang", "en")
