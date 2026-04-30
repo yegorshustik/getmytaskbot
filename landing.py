@@ -1318,10 +1318,11 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
 .footer-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
 .footer-links a:hover { color: var(--text2); }
 
-#cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface2); border-top: 1px solid var(--border); padding: 16px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; z-index: 9999; backdrop-filter: blur(12px); }
-#cookie-banner p { margin: 0; flex: 1; min-width: 200px; font-size: 14px; color: var(--text2); }
+#cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface2); border-top: 1px solid var(--border); padding: 14px 20px; display: flex; gap: 10px; align-items: center; z-index: 9999; backdrop-filter: blur(12px); }
+#cookie-banner p { margin: 0; flex: 1; font-size: 13px; color: var(--text2); line-height: 1.4; }
 #cookie-banner a { color: var(--accent); }
-.cookie-btn { padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: "DM Sans", sans-serif; }
+.cookie-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.cookie-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: "DM Sans", sans-serif; white-space: nowrap; }
 .cookie-btn-accept { background: #EDE84A; color: #2a1040; }
 .cookie-btn-accept:hover { filter: brightness(1.08); }
 .cookie-btn-decline { background: transparent; color: var(--text2); border: 1px solid var(--border); }
@@ -1580,8 +1581,10 @@ def _page(lang: str, user_count: int = 0) -> str:
 
 <div id="cookie-banner" style="display:none">
   <p>{c['cookie_text']} <a href="/privacy">{c['footer_privacy']}</a></p>
-  <button class="cookie-btn cookie-btn-accept" onclick="_cookieConsent(true)">{c['cookie_accept']}</button>
-  <button class="cookie-btn cookie-btn-decline" onclick="_cookieConsent(false)">{c['cookie_decline']}</button>
+  <div class="cookie-btns">
+    <button class="cookie-btn cookie-btn-decline" onclick="_cookieConsent(false)">{c['cookie_decline']}</button>
+    <button class="cookie-btn cookie-btn-accept" onclick="_cookieConsent(true)">{c['cookie_accept']}</button>
+  </div>
 </div>
 
 <script>
