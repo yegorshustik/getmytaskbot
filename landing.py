@@ -1341,6 +1341,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
   .for-grid { grid-template-columns: 1fr; }
   .features-bento { grid-template-columns: 1fr; }
   .cta-card { padding: 48px 28px; }
+  .cta-section { padding: 40px 0 50px; }
   .hero { padding: 32px 0 40px; }
   .hero-logo-wrap { margin-bottom: 20px; }
   .hero-badge { margin-bottom: 20px; }
