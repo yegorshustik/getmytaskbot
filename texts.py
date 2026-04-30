@@ -36,7 +36,8 @@ TEXTS = {
         "connect_link": "🔗 Подключите Google Calendar:",
         "calendar_connected": "✅ Google Calendar подключён! Теперь я буду напоминать вам о задачах.",
         "btn_apple_cal": "🍎 Apple Calendar",
-        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
+        "btn_apple_cal_connected": "🍎 Apple Calendar — отключить",
+        "btn_gcal_connected": "✅ Google Calendar — отключить",
         "apple_cal_info": (
             "🍎 *Подписка на Apple Calendar*\n\n"
             "Нажми кнопку ниже — Apple Calendar откроется и предложит подписаться.\n\n"
@@ -279,7 +280,8 @@ TEXTS = {
         "connect_link": "🔗 Connect Google Calendar:",
         "calendar_connected": "✅ Google Calendar connected! I'll remind you about your tasks.",
         "btn_apple_cal": "🍎 Apple Calendar",
-        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
+        "btn_apple_cal_connected": "🍎 Apple Calendar — disconnect",
+        "btn_gcal_connected": "✅ Google Calendar — disconnect",
         "apple_cal_info": (
             "🍎 *Apple Calendar Subscription*\n\n"
             "Tap the button below — Apple Calendar will open and offer to subscribe.\n\n"
@@ -522,7 +524,8 @@ TEXTS = {
         "connect_link": "🔗 Підключіть Google Calendar:",
         "calendar_connected": "✅ Google Calendar підключено! Тепер я нагадуватиму вам про задачі.",
         "btn_apple_cal": "🍎 Apple Calendar",
-        "btn_apple_cal_connected": "🍎 Apple Calendar ✅",
+        "btn_apple_cal_connected": "🍎 Apple Calendar — відключити",
+        "btn_gcal_connected": "✅ Google Calendar — відключити",
         "apple_cal_info": (
             "🍎 *Підписка на Apple Calendar*\n\n"
             "Натисни кнопку нижче — Apple Calendar відкриється і запропонує підписатися.\n\n"

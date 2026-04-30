@@ -1770,10 +1770,13 @@ async def _cb_calendar_connect(query, context, data: str, chat_id: int, lang: st
     if data == "disconnect_calendar":
         save_user(chat_id, calendar_token=None, calendar_connected=0)
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            TEXTS[lang]["calendar_disconnected"],
-            reply_markup=main_menu_keyboard(lang, False, get_active_task_count(chat_id), chat_id)
-        )
+        await query.message.reply_text(TEXTS[lang]["calendar_disconnected"])
+        # Return to calendar choice screen
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🗓 Google Calendar", callback_data="connect_calendar")],
+            [InlineKeyboardButton(TEXTS[lang]["btn_apple_cal"], callback_data="settings_apple_cal")],
+        ])
+        await query.message.reply_text(TEXTS[lang]["calendar_choose"], reply_markup=keyboard)
         return
     if data == "skip_calendar":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -1822,6 +1825,13 @@ async def _cb_settings(query, context, data: str, chat_id: int, lang: str, user)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(t["reminder_off"])
         return
+    if data == "settings_cal_choose":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🗓 Google Calendar", callback_data="connect_calendar")],
+            [InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")],
+        ])
+        await query.message.reply_text(t["calendar_choose"], reply_markup=keyboard)
+        return
     if data == "settings_apple_cal":
         user_obj = get_user(chat_id)
         token = user_obj.get("ical_token") if user_obj else None
@@ -1857,24 +1867,12 @@ async def _cb_settings(query, context, data: str, chat_id: int, lang: str, user)
         save_user(chat_id, ical_token=None)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(t["apple_cal_disconnected"])
-        # Show calendar choice so user can reconnect or switch to Google
-        gcal_connected = bool(get_user(chat_id) and get_user(chat_id).get("calendar_connected"))
-        if not gcal_connected:
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")],
-                [InlineKeyboardButton(t["btn_apple_cal_connect"], callback_data="apple_cal_connect_fresh")],
-            ])
-            await query.message.reply_text(t["calendar_choose"], reply_markup=keyboard)
-        return
-    if data == "apple_cal_connect_fresh":
-        token = secrets.token_urlsafe(24)
-        save_user(chat_id, ical_token=token)
-        open_url = f"{BASE_URL}/ical-open/{token}"
+        # Return to calendar choice screen
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t["btn_apple_cal_open"], url=open_url)],
-            [InlineKeyboardButton(t["btn_apple_cal_disconnect"], callback_data="apple_cal_disconnect")],
+            [InlineKeyboardButton("🗓 Google Calendar", callback_data="connect_calendar")],
+            [InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")],
         ])
-        await query.edit_message_reply_markup(reply_markup=keyboard)
+        await query.message.reply_text(t["calendar_choose"], reply_markup=keyboard)
         return
     if data == "settings_archive" or data.startswith("archive_page_"):
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2389,7 +2387,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_calendar_connect(query, context, data, chat_id, lang, user)
     if (data.startswith("settings_") or data.startswith("reminder_") or data == "reminder_disable"
             or data.startswith("archive_page_") or data.startswith("set_remind_min_")
-            or data in ("apple_cal_disconnect", "apple_cal_connect", "apple_cal_connect_fresh")):
+            or data in ("apple_cal_disconnect", "apple_cal_connect")):
         return await _cb_settings(query, context, data, chat_id, lang, user)
     if data.startswith("tz_"):
         return await _cb_tz(query, context, data, chat_id, lang)
@@ -2986,15 +2984,14 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gcal_connected = bool(user and user.get("calendar_connected"))
     ical_subscribed = bool(user and user.get("ical_token"))
     if gcal_connected:
-        # Google Calendar подключён → показываем только "Отключить", Apple Calendar скрываем
-        keyboard_rows.append([InlineKeyboardButton(t["btn_disconnect_calendar"], callback_data="disconnect_calendar")])
+        # Google подключён → кнопка с опцией отключить
+        keyboard_rows.append([InlineKeyboardButton(t["btn_gcal_connected"], callback_data="disconnect_calendar")])
     elif ical_subscribed:
-        # Apple Calendar подписан → показываем только Apple (статус), Google скрываем
+        # Apple подключён → кнопка с опцией отключить
         keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal_connected"], callback_data="settings_apple_cal")])
     else:
-        # Ничего не подключено → показываем оба варианта
-        keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="connect_calendar")])
-        keyboard_rows.append([InlineKeyboardButton(t["btn_apple_cal"], callback_data="settings_apple_cal")])
+        # Ничего не подключено → одна кнопка, ведёт на выбор
+        keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="settings_cal_choose")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")])
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
