@@ -764,6 +764,19 @@ async def send_weekly_digest():
 
             bars_text = "\n".join(bar_lines)
 
+            active_days = sum(1 for c in counts if c > 0)
+            if active_days == 0:
+                mot_idx = 0
+            elif active_days <= 2:
+                mot_idx = 1
+            elif active_days <= 4:
+                mot_idx = 2
+            elif active_days <= 6:
+                mot_idx = 3
+            else:
+                mot_idx = 4
+            motivation = t["weekly_motivation"][mot_idx]
+
             if total_tasks == 0:
                 footer = t["weekly_no_tasks"]
             else:
@@ -778,7 +791,8 @@ async def send_weekly_digest():
                 f"```\n"
                 f"{t['weekly_intro']}\n\n"
                 f"{bars_text}\n\n"
-                f"{footer}\n"
+                f"{footer}\n\n"
+                f"{motivation}\n"
                 f"```"
             )
 

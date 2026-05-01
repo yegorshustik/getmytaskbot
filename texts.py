@@ -253,6 +253,13 @@ TEXTS = {
         "weekly_streak": "Стрик",
         "weekly_streak_days": "дн",
         "weekly_no_tasks": "На этой неделе задач не было. Начни с понедельника! 💪",
+        "weekly_motivation": [
+            "Новая неделя — новые возможности. Вперёд! 🎯",
+            "Каждый шаг вперёд — уже победа. Так держать! 🚀",
+            "Ты на верном пути. Продолжай! ⚡",
+            "Постоянство — залог успеха! 💪",
+            "Результаты приходят к тем, кто не останавливается. 🔥",
+        ],
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -504,6 +511,13 @@ TEXTS = {
         "weekly_streak": "Streak",
         "weekly_streak_days": "d",
         "weekly_no_tasks": "No tasks this week. Start fresh on Monday! 💪",
+        "weekly_motivation": [
+            "New week — new opportunities. Let's go! 🎯",
+            "Every step forward is already a win. Keep it up! 🚀",
+            "You're on the right track. Keep going! ⚡",
+            "Consistency is the key to success! 💪",
+            "Results come to those who never stop. 🔥",
+        ],
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -755,6 +769,13 @@ TEXTS = {
         "weekly_streak": "Стрік",
         "weekly_streak_days": "дн",
         "weekly_no_tasks": "Цього тижня задач не було. Починай з понеділка! 💪",
+        "weekly_motivation": [
+            "Новий тиждень — нові можливості. Вперед! 🎯",
+            "Кожен крок вперед — вже перемога. Так тримати! 🚀",
+            "Ти на правильному шляху. Продовжуй! ⚡",
+            "Постійність — запорука успіху! 💪",
+            "Результати приходять до тих, хто не зупиняється. 🔥",
+        ],
     },
 }
 
