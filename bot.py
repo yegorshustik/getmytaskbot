@@ -727,32 +727,30 @@ async def send_weekly_digest():
             for date_str, cnt, done in rows:
                 day_map[date_str] = (cnt or 0, done or 0)
 
-            days_labels  = t["weekly_days"]
-            circles      = []
-            bar_lines    = []
-            total_tasks  = 0
-            total_done   = 0
+            days_labels = t["weekly_days"]
+            bar_lines   = []
+            total_tasks = 0
+            total_done  = 0
 
-            counts = [
+            counts    = [
                 day_map.get(str(week_start + timedelta(days=i)), (0, 0))[0]
                 for i in range(7)
             ]
             max_count = max(counts) if any(counts) else 1
 
             for i in range(7):
-                day           = week_start + timedelta(days=i)
-                cnt, done     = day_map.get(str(day), (0, 0))
-                total_tasks  += cnt
-                total_done   += done
-                label         = days_labels[i]
-
-                circles.append("🟢" if cnt > 0 else "⚪")
+                day          = week_start + timedelta(days=i)
+                cnt, done    = day_map.get(str(day), (0, 0))
+                total_tasks += cnt
+                total_done  += done
+                label        = days_labels[i]
+                circle       = "🟢" if cnt > 0 else "⚪"
 
                 if cnt > 0:
                     bar_len  = max(1, round(cnt / max_count * 6))
-                    bar_line = f"{label}  {'█' * bar_len}  {cnt}"
+                    bar_line = f"{label} {circle} {'█' * bar_len}  {cnt}"
                 else:
-                    bar_line = f"{label}  ·  —"
+                    bar_line = f"{label} {circle} ·  —"
                 bar_lines.append(bar_line)
 
             # Streak: consecutive active days counting back from Sunday
@@ -764,9 +762,7 @@ async def send_weekly_digest():
                 else:
                     break
 
-            header      = "  ".join(days_labels)
-            circles_row = "  ".join(circles)
-            bars_text   = "\n".join(bar_lines)
+            bars_text = "\n".join(bar_lines)
 
             if total_tasks == 0:
                 footer = t["weekly_no_tasks"]
@@ -779,11 +775,11 @@ async def send_weekly_digest():
                 footer = done_part + (f" · {streak_part}" if streak_part else "")
 
             text = (
+                f"```\n"
                 f"{t['weekly_intro']}\n\n"
-                f"{header}\n"
-                f"{circles_row}\n\n"
-                f"```\n{bars_text}\n```\n\n"
-                f"{footer}"
+                f"{bars_text}\n\n"
+                f"{footer}\n"
+                f"```"
             )
 
             await bot_app.bot.send_message(
