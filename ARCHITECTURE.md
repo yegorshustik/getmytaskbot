@@ -4,11 +4,11 @@
 
 ```
 getmytaskbot/
-├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3690 строк
+├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3821 строк
 ├── db.py               # SQLite-слой, все операции с БД               ~413 строк
 ├── calendar_utils.py   # Google Calendar API, OAuth/PKCE, iCal        ~272 строк
 ├── texts.py            # Все локализованные строки (ru/en/uk)         ~739 строк
-├── landing.py          # HTML лендинга (get_home_html + assets)       ~1774 строк
+├── landing.py          # HTML лендинга (get_home_html + assets)       ~1781 строк
 ├── tests/
 │   ├── conftest.py     # Моки тяжёлых зависимостей
 │   ├── test_logic.py   # 38 unit-тестов на чистую логику
@@ -75,13 +75,13 @@ _cu.init(BASE_URL)
 ```
 
 ### `texts.py` — локализация
-Один словарь `TEXTS = {"ru": {...}, "en": {...}, "uk": {...}}` с ~140 ключами на язык. Тест `test_texts.py` гарантирует, что все три языка имеют одинаковый набор ключей.
+Один словарь `TEXTS = {"ru": {...}, "en": {...}, "uk": {...}}` с ~170 ключами на язык. Тест `test_texts.py` гарантирует, что все три языка имеют одинаковый набор ключей.
 
 ### `bot.py` — точка входа
 Содержит:
 - Telegram-хендлеры (`handle_text`, `handle_voice`, `handle_callback` и его 11 sub-handlers)
 - Фоновые задачи APScheduler (`check_reminders`, `sync_calendar_events`, `send_morning_digests`, `check_reengagement`, `check_task_reminders`)
-- aiohttp веб-сервер (`/oauth/callback`, `/stats`, `/ical/{token}`, `/privacy`)
+- aiohttp веб-сервер (`/`, `/privacy`, `/terms`, `/oauth/callback`, `/stats`, `/ical/{token}`, `/ical-open/{token}`, `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/api/stats`, `/health`)
 - Вспомогательная логика (`format_date`, `build_tasks_by_day`, `adjust_task_to_future`, `process_and_show`)
 - `main()` — сборка и запуск
 
@@ -98,7 +98,7 @@ _cu.init(BASE_URL)
 | `_cb_goal_delete` | `gdel_*` |
 | `_cb_announce` | `announce_*` |
 | `_cb_calendar_connect` | `connect_calendar`, `disconnect_calendar`, `skip_calendar` |
-| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*`, `apple_cal_connect`, `apple_cal_disconnect` |
+| `_cb_settings` | `settings_*`, `reminder_*`, `archive_page_*`, `set_remind_min_*`, `apple_cal_connect`, `apple_cal_disconnect`, `settings_cal_choose` |
 | `_cb_deletedata` | `deletedata_confirm`, `deletedata_cancel` |
 | `_cb_tz` | `tz_*` |
 | `_cb_ics` | `ics_*` |
@@ -132,6 +132,16 @@ make hooks    # активировать pre-commit хук
 | 3 | Извлечён `db.py` | −~260 строк |
 | 4 | Извлечён `calendar_utils.py` | −~220 строк |
 | **Итого** | bot.py: 4251 → 3158 строк | **−1093 строки** |
+
+### Изменения май 2026
+- Лендинг: карточки персон — иконка слева от заголовка (flex-row), вертикальное центрирование
+- Лендинг: CTA-секция — вертикальные отступы в 2 раза меньше на мобайле (`padding: 40px 0 50px`)
+- Лендинг: nav-логотип — `white-space: nowrap; flex-shrink: 0` (текст не обрезается на мобайле)
+- Лендинг: cookie-баннер — кнопки не переносятся на новую строку (`.cookie-btns` wrapper)
+- Лендинг: обновлён контент ru/en/uk (описание, персоны, фичи, FAQ) под Apple Calendar
+- Страница `/terms` — Terms of Service добавлена в bot.py и зарегистрирована как маршрут
+- OAuth success — полноценная HTML-страница вместо plain text
+- Лендинг: `ROBOTS_TXT` + `SITEMAP_XML` + `LLMS_TXT` перенесены в landing.py, экспортируются в bot.py
 
 ### Изменения апрель 2026
 - `registered_at` добавлен в схему `users` и `_ALLOWED_USER_COLS`
