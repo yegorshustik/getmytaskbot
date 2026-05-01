@@ -1031,8 +1031,10 @@ def _features_html(c):
         tag = '<span class="feat-tag">AI-powered</span>' if i == 0 else ''
         parts.append(
             f'<div class="feat-card">'
+            f'<div class="feat-card-header">'
             f'<div class="feat-icon"><i data-lucide="{icon}"></i></div>'
             f'<h3>{title}</h3>'
+            f'</div>'
             f'<p>{text}</p>'
             f'{tag}'
             f'</div>'
@@ -1280,7 +1282,8 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .feat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 24px; transition: all 0.25s; position: relative; overflow: hidden; }
 .feat-card:hover { border-color: oklch(62% 0.22 280 / 0.4); background: var(--surface2); }
 .feat-card:hover .feat-icon { box-shadow: 0 0 20px var(--accent-glow); }
-.feat-icon { width: 40px; height: 40px; border-radius: 10px; background: oklch(62% 0.22 280 / 0.15); border: 1px solid oklch(62% 0.22 280 / 0.25); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; transition: box-shadow 0.25s; }
+.feat-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.feat-icon { width: 40px; height: 40px; border-radius: 10px; background: oklch(62% 0.22 280 / 0.15); border: 1px solid oklch(62% 0.22 280 / 0.25); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: box-shadow 0.25s; }
 .feat-icon i { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; }
 .feat-card:nth-child(1) .feat-icon { color: oklch(68% 0.22 25); }
 .feat-card:nth-child(2) .feat-icon { color: oklch(68% 0.2 280); }
@@ -1290,7 +1293,7 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .feat-card:nth-child(6) .feat-icon { color: oklch(68% 0.18 240); }
 .feat-card:nth-child(7) .feat-icon { color: oklch(70% 0.16 170); }
 .feat-card:nth-child(8) .feat-icon { color: oklch(68% 0.16 200); }
-.feat-card h3 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px; }
+.feat-card h3 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; line-height: 1.3; }
 .feat-card p { font-size: 13px; color: var(--text2); line-height: 1.6; }
 .feat-tag { display: inline-flex; background: oklch(68% 0.18 155 / 0.12); border: 1px solid oklch(68% 0.18 155 / 0.3); color: oklch(72% 0.16 155); font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 4px; font-family: "DM Mono", monospace; letter-spacing: 0.04em; margin-top: 12px; }
 
