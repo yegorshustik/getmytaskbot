@@ -674,6 +674,127 @@ async def send_morning_digests():
         except Exception as e:
             logger.error(f"Morning digest error for {chat_id}: {e}")
 
+# ─── Weekly digest ────────────────────────────────────────────────────────────
+
+_WEEKLY_DIGEST_EVENT_ID = "weekly_digest"
+_WEEKLY_DIGEST_HOUR    = 20   # 20:xx in user's local timezone
+_WEEKLY_DIGEST_WEEKDAY = 6    # Sunday (0=Mon … 6=Sun)
+
+
+async def send_weekly_digest():
+    """Send activity digest every Sunday at 20:xx in each user's timezone."""
+    conn = sqlite3.connect("users.db")
+    users = conn.execute(
+        "SELECT chat_id, lang, timezone FROM users WHERE lang IS NOT NULL"
+    ).fetchall()
+    conn.close()
+
+    for chat_id, lang, tz_name in users:
+        try:
+            tz   = ZoneInfo(tz_name or "Europe/Moscow")
+            now  = datetime.now(tz)
+
+            if now.weekday() != _WEEKLY_DIGEST_WEEKDAY:
+                continue
+            if now.hour != _WEEKLY_DIGEST_HOUR:
+                continue
+
+            today_str = now.strftime("%Y-%m-%d")
+            if reminder_already_sent(chat_id, _WEEKLY_DIGEST_EVENT_ID, today_str):
+                continue
+            mark_reminder_sent(chat_id, _WEEKLY_DIGEST_EVENT_ID, today_str)
+
+            lang = lang or "ru"
+            t    = TEXTS[lang]
+
+            # Week: Mon–Sun (Sun = today)
+            week_end   = now.date()
+            week_start = week_end - timedelta(days=6)
+
+            # Tasks scheduled this week (by user-chosen date)
+            db   = sqlite3.connect("users.db")
+            rows = db.execute(
+                """SELECT suggested_date, COUNT(*), SUM(done)
+                   FROM tasks
+                   WHERE chat_id=?
+                     AND suggested_date BETWEEN ? AND ?
+                   GROUP BY suggested_date""",
+                (chat_id, str(week_start), str(week_end))
+            ).fetchall()
+            db.close()
+
+            day_map = {}  # "YYYY-MM-DD" -> (created, done)
+            for date_str, cnt, done in rows:
+                day_map[date_str] = (cnt or 0, done or 0)
+
+            days_labels  = t["weekly_days"]
+            circles      = []
+            bar_lines    = []
+            total_tasks  = 0
+            total_done   = 0
+
+            counts = [
+                day_map.get(str(week_start + timedelta(days=i)), (0, 0))[0]
+                for i in range(7)
+            ]
+            max_count = max(counts) if any(counts) else 1
+
+            for i in range(7):
+                day           = week_start + timedelta(days=i)
+                cnt, done     = day_map.get(str(day), (0, 0))
+                total_tasks  += cnt
+                total_done   += done
+                label         = days_labels[i]
+
+                circles.append("🟢" if cnt > 0 else "⚪")
+
+                if cnt > 0:
+                    bar_len  = max(1, round(cnt / max_count * 6))
+                    bar_line = f"{label}  {'█' * bar_len}  {cnt}"
+                else:
+                    bar_line = f"{label}  ·  —"
+                bar_lines.append(bar_line)
+
+            # Streak: consecutive active days counting back from Sunday
+            streak = 0
+            for i in range(6, -1, -1):
+                day = week_start + timedelta(days=i)
+                if str(day) in day_map:
+                    streak += 1
+                else:
+                    break
+
+            header      = "  ".join(days_labels)
+            circles_row = "  ".join(circles)
+            bars_text   = "\n".join(bar_lines)
+
+            if total_tasks == 0:
+                footer = t["weekly_no_tasks"]
+            else:
+                done_part   = f"✅ {t['weekly_done']}: {total_done}/{total_tasks}"
+                streak_part = (
+                    f"🔥 {t['weekly_streak']}: {streak} {t['weekly_streak_days']}"
+                    if streak >= 2 else ""
+                )
+                footer = done_part + (f" · {streak_part}" if streak_part else "")
+
+            text = (
+                f"{t['weekly_intro']}\n\n"
+                f"{header}\n"
+                f"{circles_row}\n\n"
+                f"```\n{bars_text}\n```\n\n"
+                f"{footer}"
+            )
+
+            await bot_app.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode="Markdown",
+            )
+
+        except Exception as e:
+            logger.error(f"Weekly digest error for {chat_id}: {e}")
+
 # ─── Re-engagement ────────────────────────────────────────────────────────────
 
 _REENGAGEMENT_HOUR = 10      # send at 10:xx in user's local timezone
@@ -3789,6 +3910,7 @@ async def main():
     scheduler.add_job(_safe_job, "interval", minutes=5,  args=[check_reminders,      "check_reminders"])
     scheduler.add_job(_safe_job, "interval", minutes=1,  args=[check_task_reminders, "check_task_reminders"])
     scheduler.add_job(_safe_job, "interval", minutes=1,  args=[send_morning_digests, "morning_digests"])
+    scheduler.add_job(_safe_job, "interval", minutes=1,  args=[send_weekly_digest,   "weekly_digest"])
     scheduler.add_job(_safe_job, "interval", minutes=15, args=[sync_calendar_events, "sync_calendar"])
     scheduler.add_job(_safe_job, "interval", minutes=30, args=[check_reengagement,   "reengagement"])
     scheduler.add_job(monitor_system, "interval", minutes=10)

@@ -246,6 +246,13 @@ TEXTS = {
         "deletedata_cancel": "❌ Отмена",
         "deletedata_done": "✅ Все ваши данные удалены. Используйте /start, чтобы зарегистрироваться снова.",
         "deletedata_cancelled": "❌ Удаление отменено.",
+        # Weekly digest
+        "weekly_intro": "Привет! Вот твоя неделя в цифрах 📊",
+        "weekly_days": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+        "weekly_done": "Выполнено",
+        "weekly_streak": "Стрик",
+        "weekly_streak_days": "дн",
+        "weekly_no_tasks": "На этой неделе задач не было. Начни с понедельника! 💪",
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -490,6 +497,13 @@ TEXTS = {
         "deletedata_cancel": "❌ Cancel",
         "deletedata_done": "✅ All your data has been deleted. Use /start to register again.",
         "deletedata_cancelled": "❌ Deletion cancelled.",
+        # Weekly digest
+        "weekly_intro": "Hey! Here's your week in numbers 📊",
+        "weekly_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        "weekly_done": "Done",
+        "weekly_streak": "Streak",
+        "weekly_streak_days": "d",
+        "weekly_no_tasks": "No tasks this week. Start fresh on Monday! 💪",
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
@@ -734,6 +748,13 @@ TEXTS = {
         "deletedata_cancel": "❌ Скасувати",
         "deletedata_done": "✅ Усі ваші дані видалені. Використайте /start для повторної реєстрації.",
         "deletedata_cancelled": "❌ Видалення скасовано.",
+        # Weekly digest
+        "weekly_intro": "Привіт! Ось твій тиждень у цифрах 📊",
+        "weekly_days": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
+        "weekly_done": "Виконано",
+        "weekly_streak": "Стрік",
+        "weekly_streak_days": "дн",
+        "weekly_no_tasks": "Цього тижня задач не було. Починай з понеділка! 💪",
     },
 }
 
