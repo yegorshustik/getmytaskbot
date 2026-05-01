@@ -1013,8 +1013,10 @@ def _problems_html(c):
         n = str(i + 1).zfill(2)
         parts.append(
             f'<div class="problem-card">'
+            f'<div class="problem-card-header">'
             f'<span class="problem-icon"><i data-lucide="{icon}"></i></span>'
             f'<h3>{title}</h3>'
+            f'</div>'
             f'<p>{text}</p>'
             f'</div>'
         )
@@ -1269,13 +1271,14 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .problem-card:hover { border-color: var(--border2); transform: translateY(-2px); }
 .problem-card:hover::after { opacity: 1; }
 .problem-num { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text3); letter-spacing: 0.1em; margin-bottom: 20px; display: block; }
-.problem-icon { font-size: 32px; margin-bottom: 16px; display: block; }
+.problem-card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.problem-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .problem-icon i { width: 32px; height: 32px; stroke: currentColor; stroke-width: 1.75; }
 .problem-card:nth-child(1) .problem-icon { color: oklch(68% 0.22 25); }
 .problem-card:nth-child(2) .problem-icon { color: oklch(68% 0.18 280); }
 .problem-card:nth-child(3) .problem-icon { color: oklch(68% 0.18 200); }
-.problem-card h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.025em; margin-bottom: 12px; }
-.problem-card p { font-size: 15px; color: var(--text2); line-height: 1.65; }
+.problem-card h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.025em; margin: 0; line-height: 1.3; }
+.problem-card p { font-size: 15px; color: var(--text2); line-height: 1.65; margin: 0; }
 
 .features-section { padding: 28px 0; }
 .features-bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 28px; }
