@@ -4,10 +4,10 @@
 
 ```
 getmytaskbot/
-├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3821 строк
+├── bot.py              # Telegram-хендлеры, веб-сервер, main()       ~3943 строк
 ├── db.py               # SQLite-слой, все операции с БД               ~413 строк
 ├── calendar_utils.py   # Google Calendar API, OAuth/PKCE, iCal        ~272 строк
-├── texts.py            # Все локализованные строки (ru/en/uk)         ~739 строк
+├── texts.py            # Все локализованные строки (ru/en/uk)         ~760 строк
 ├── landing.py          # HTML лендинга (get_home_html + assets)       ~1781 строк
 ├── tests/
 │   ├── conftest.py     # Моки тяжёлых зависимостей
@@ -75,12 +75,12 @@ _cu.init(BASE_URL)
 ```
 
 ### `texts.py` — локализация
-Один словарь `TEXTS = {"ru": {...}, "en": {...}, "uk": {...}}` с ~170 ключами на язык. Тест `test_texts.py` гарантирует, что все три языка имеют одинаковый набор ключей.
+Один словарь `TEXTS = {"ru": {...}, "en": {...}, "uk": {...}}` с ~176 ключами на язык. Тест `test_texts.py` гарантирует, что все три языка имеют одинаковый набор ключей.
 
 ### `bot.py` — точка входа
 Содержит:
 - Telegram-хендлеры (`handle_text`, `handle_voice`, `handle_callback` и его 11 sub-handlers)
-- Фоновые задачи APScheduler (`check_reminders`, `sync_calendar_events`, `send_morning_digests`, `check_reengagement`, `check_task_reminders`)
+- Фоновые задачи APScheduler (`check_reminders`, `sync_calendar_events`, `send_morning_digests`, `send_weekly_digest`, `check_reengagement`, `check_task_reminders`)
 - aiohttp веб-сервер (`/`, `/privacy`, `/terms`, `/oauth/callback`, `/stats`, `/ical/{token}`, `/ical-open/{token}`, `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/api/stats`, `/health`)
 - Вспомогательная логика (`format_date`, `build_tasks_by_day`, `adjust_task_to_future`, `process_and_show`)
 - `main()` — сборка и запуск
@@ -142,6 +142,15 @@ make hooks    # активировать pre-commit хук
 - Страница `/terms` — Terms of Service добавлена в bot.py и зарегистрирована как маршрут
 - OAuth success — полноценная HTML-страница вместо plain text
 - Лендинг: `ROBOTS_TXT` + `SITEMAP_XML` + `LLMS_TXT` перенесены в landing.py, экспортируются в bot.py
+
+### Изменения май 2026
+- Еженедельный дайджест активности (`send_weekly_digest`): каждое воскресенье в 20:00 по таймзоне пользователя
+  - Тепловая карта дней (🟢/⚪) + барчарт задач в моноширинном блоке + строка итогов
+  - Бары масштабируются относительно самого активного дня (макс 6 символов)
+  - Стрик — последовательность активных дней с конца недели
+  - Дедупликация через `sent_reminders` (ключ `weekly_digest` + дата воскресенья)
+  - Локализовано: ru / en / uk; 6 новых ключей TEXTS на язык
+  - Зарегистрирован в APScheduler: `interval minutes=1`
 
 ### Изменения апрель 2026
 - `registered_at` добавлен в схему `users` и `_ALLOWED_USER_COLS`
