@@ -289,7 +289,8 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
         "en": f"User wants to reschedule. Current time is {today} {current_time} (timezone {tz_name}). Extract new date/time from: '{text}'. Return ONLY JSON: {{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\"}} or {{\"error\": \"unclear\"}} if unclear. Calculate time from current {current_time}.",
         "uk": f"Користувач хоче перенести задачу. Зараз {today} {current_time} (пояс {tz_name}). Витягни нову дату/час з: '{text}'. Поверни ТІЛЬКИ JSON: {{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\"}} або {{\"error\": \"unclear\"}} якщо незрозуміло. Час розраховуй від поточного {current_time}.",
     }
-    response = groq_client.chat.completions.create(
+    response = await asyncio.to_thread(
+        groq_client.chat.completions.create,
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompts[lang]}],
         temperature=0.1,
@@ -887,7 +888,8 @@ def adjust_task_to_future(task: dict, tz_name: str):
         return task, "ok"
 
 async def process_text(text, lang, tz_name="Europe/Moscow"):
-    response = groq_client.chat.completions.create(
+    response = await asyncio.to_thread(
+        groq_client.chat.completions.create,
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": get_system_prompt(lang, tz_name)},
@@ -1559,7 +1561,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file = await context.bot.get_file(voice.file_id)
             await file.download_to_drive(tmp_path)
             with open(tmp_path, "rb") as f:
-                transcription = groq_client.audio.transcriptions.create(
+                transcription = await asyncio.to_thread(
+                    groq_client.audio.transcriptions.create,
                     model="whisper-large-v3", file=f)
         finally:
             os.unlink(tmp_path)
@@ -2817,7 +2820,8 @@ async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europ
         ),
     }
     try:
-        resp = groq_client.chat.completions.create(
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=80, temperature=0,
@@ -2893,7 +2897,8 @@ async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Mos
         ),
     }
     try:
-        resp = groq_client.chat.completions.create(
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=80, temperature=0,
@@ -2911,7 +2916,8 @@ async def parse_goal_deadline(text: str, lang: str, tz_name: str) -> str:
         "uk": f"Сьогодні {today}. Визнач дату з тексту: «{text}». Поверни ТІЛЬКИ JSON: {{\"date\": \"YYYY-MM-DD\"}} або {{\"date\": null}} якщо незрозуміло.",
     }
     try:
-        resp = groq_client.chat.completions.create(
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=30, temperature=0,
@@ -2954,7 +2960,8 @@ async def _translate_announce(text_ru: str, lang: str) -> str:
         return text_ru
     lang_name = {"en": "English", "uk": "Ukrainian"}.get(lang, "English")
     try:
-        resp = groq_client.chat.completions.create(
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
             model="llama-3.3-70b-versatile",
             messages=[{
                 "role": "user",
