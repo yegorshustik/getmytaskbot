@@ -3225,7 +3225,7 @@ async def oauth_callback(request):
     <div class="icon">✅</div>
     <h1>Google Calendar connected!</h1>
     <p>Your tasks will now automatically appear in your calendar. You can close this tab and return to the bot.</p>
-    <a class="btn" href="https://t.me/getmytaskbot">← Back to Get My Task</a>
+    <a class="btn" href="https://t.me/getmytask_bot">← Back to Get My Task</a>
     <p class="hint">You can safely close this tab</p>
   </div>
 </body>
