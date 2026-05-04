@@ -333,8 +333,18 @@ async def check_reminders():
                 orderBy="startTime"
             ).execute()
             events = events_result.get("items", [])
+            # Pre-load event IDs already tracked in bot DB — their reminders are handled by check_task_reminders
+            _db = sqlite3.connect("users.db")
+            _bot_event_ids = {
+                row[0] for row in
+                _db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0", (chat_id,)).fetchall()
+            }
+            _db.close()
             for event in events:
                 event_id = event["id"]
+                # Skip events already in bot DB — bot's own reminder system handles them
+                if event_id in _bot_event_ids:
+                    continue
                 title = event.get("summary", "—")
                 start = event.get("start", {})
                 start_str = start.get("dateTime") or start.get("date")
