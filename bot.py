@@ -1570,10 +1570,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             file = await context.bot.get_file(voice.file_id)
             await file.download_to_drive(tmp_path)
+            whisper_lang = {"ru": "ru", "en": "en", "uk": "uk"}.get(lang, "ru")
             with open(tmp_path, "rb") as f:
                 transcription = await asyncio.to_thread(
                     groq_client.audio.transcriptions.create,
-                    model="whisper-large-v3", file=f)
+                    model="whisper-large-v3", file=f,
+                    language=whisper_lang)
         finally:
             os.unlink(tmp_path)
         text = transcription.text.strip()
