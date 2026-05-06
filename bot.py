@@ -246,7 +246,15 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 Для каждой задачи верни JSON с полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (на русском), suggested_date (YYYY-MM-DD), suggested_time (HH:MM если указано время или относительное время вроде "через 15 минут" — считай от {current_time}, иначе null), reason (на русском, пиши от второго лица: "Вы указали...", "Вы упомянули..." и т.д.).
 ВАЖНО про title: (1) Каждый title обязан содержать глагол-действие — никаких безглагольных фрагментов. (2) Если пользователь перечисляет несколько объектов при одном глаголе ("протестировать X, Y и Z") — ВСЕГДА создавай ОДНУ задачу: "Протестировать X, Y и З". Разбивай на несколько задач ТОЛЬКО если у каждой явно разные дата/время или контекст. (3) Каждый title должен быть самодостаточным законченным действием.
 ВАЖНО про даты: (1) Если пользователь НЕ указал дату/время явно — верни suggested_date: null, suggested_time: null. (2) Никогда не выдумывай дату или время — только то, что пользователь сказал напрямую. (3) Явное указание — это: "сегодня", "завтра", конкретное число, "через N минут/часов/дней", "утром", "вечером", конкретное время ("в 15:00", "в 3 часа"). Общие фразы вроде "нужно сделать", "хочу", "планирую" без указания когда — НЕ явное.
-Правила вычисления времени: "через N минут/часов" — прибавь к {current_time} и верни конкретные suggested_date + suggested_time; "через N дней" — прибавь к сегодня; "завтра", "послезавтра" — только дата, время null если не указано явно.
+Правила вычисления относительного времени (ВСЕГДА извлекай suggested_date и suggested_time, НЕ оставляй null):
+- "через N минут/часов" — прибавь к {current_time}.
+- "через полчаса", "через пол часа" — прибавь 30 минут к {current_time}.
+- "через час", "через час с половиной", "через полтора часа" — прибавь 60 / 90 минут.
+- "минут через 20", "часа через 2", "через минут 15" — то же самое, инверсия слов.
+- "через N дней" — прибавь N дней к сегодня; "через неделю" — +7 дней.
+- "сейчас", "прямо сейчас" — текущее время {current_time}.
+- "скоро", "вскоре", "через какое-то время" — это НЕ конкретное время, оставь null.
+- "завтра", "послезавтра" — только дата, время null если не указано явно.
 ВАЖНО про suggested_time: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Если время указано явно и уже прошло — флипни AM/PM (+12 ч).
 ВАЖНО про длительность: если пользователь явно указал продолжительность ("на час", "на 45 минут", "с 14:00 до 16:00", "2 часа") — добавь поле duration_minutes (целое число). Если длительность не указана — не включай поле duration_minutes.
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
@@ -275,6 +283,15 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 Вход: "купить молоко хлеб и сыр"
 Выход: [{{"title":"Купить молоко, хлеб и сыр","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":null,"suggested_time":null,"reason":"Вы перечислили продукты, которые нужно купить","description":""}}]
 
+Вход (относительное время — текущее {current_time}, сегодня {today}): "пойти прогуляться через 15 минут"
+Выход: [{{"title":"Пойти прогуляться","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":"{today}","suggested_time":"<{current_time} + 15 минут>","reason":"Вы хотите пойти прогуляться через 15 минут","description":""}}]
+
+Вход (относительное время): "поесть через полчаса"
+Выход: [{{"title":"Поесть","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":"{today}","suggested_time":"<{current_time} + 30 минут>","reason":"Вы хотите поесть через полчаса","description":""}}]
+
+Вход (относительное время): "позвонить маме через час"
+Выход: [{{"title":"Позвонить маме","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":"{today}","suggested_time":"<{current_time} + 60 минут>","reason":"Вы хотите позвонить маме через час","description":""}}]
+
 Вход: "каждый понедельник и среду в 7 утра тренировка"
 Выход: [{{"title":"Тренировка","quadrant":"Q2","quadrant_name":"Важно, не срочно","suggested_date":"<ближайший пн или ср>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"Вы указали регулярные тренировки по понедельникам и средам в 7:00","description":""}}]
 
@@ -283,7 +300,14 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
 IMPORTANT about title: (1) Every title must contain an action verb — no fragment-only titles. (2) If the user lists multiple objects under one verb ("test X, Y and Z") — ALWAYS create ONE task: "Test X, Y and Z". Split into multiple tasks ONLY if each has a clearly different date/time or context. (3) Each title must be a complete self-contained action.
 IMPORTANT about dates: (1) If the user did NOT explicitly mention a date/time — return suggested_date: null, suggested_time: null. (2) Never invent a date or time — only use what the user said directly. (3) Explicit indicators: "today", "tomorrow", a specific date, "in N minutes/hours/days", "morning", "evening", a specific time ("at 3pm", "at 15:00"). Generic phrases like "need to do", "want to", "planning to" without saying when — are NOT explicit.
-Time calculation rules: "in N minutes/hours" — add to {current_time} and return concrete suggested_date + suggested_time; "in N days" — add to today's date; "tomorrow", "next week" — date only, time null unless stated.
+Relative time rules (ALWAYS extract suggested_date and suggested_time, do NOT leave null):
+- "in N minutes/hours" — add to {current_time}.
+- "in half an hour" — add 30 minutes to {current_time}.
+- "in an hour", "in an hour and a half" — add 60 / 90 minutes.
+- "in N days" — add N days to today; "in a week" — +7 days.
+- "now", "right now" — current time {current_time}.
+- "soon", "in a while" — NOT a concrete time, leave null.
+- "tomorrow", "next week" — date only, time null unless stated.
 IMPORTANT about suggested_time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) If time was explicitly stated but is in the past — flip AM/PM (+12h).
 IMPORTANT about duration: if the user explicitly states a duration ("for an hour", "45 minutes", "from 2pm to 4pm", "2 hours") — add field duration_minutes (integer). If no duration is stated — do not include duration_minutes.
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
@@ -312,6 +336,15 @@ Output: [{{"title":"Call Pete","quadrant":"Q3","quadrant_name":"Urgent, not impo
 Input: "buy milk bread and cheese"
 Output: [{{"title":"Buy milk, bread and cheese","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":null,"suggested_time":null,"reason":"You listed groceries to buy","description":""}}]
 
+Input (relative time — current is {current_time}, today is {today}): "go for a walk in 15 minutes"
+Output: [{{"title":"Go for a walk","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":"{today}","suggested_time":"<{current_time} + 15 min>","reason":"You want to go for a walk in 15 minutes","description":""}}]
+
+Input (relative time): "eat in half an hour"
+Output: [{{"title":"Eat","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":"{today}","suggested_time":"<{current_time} + 30 min>","reason":"You want to eat in half an hour","description":""}}]
+
+Input (relative time): "call mom in an hour"
+Output: [{{"title":"Call mom","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":"{today}","suggested_time":"<{current_time} + 60 min>","reason":"You want to call mom in an hour","description":""}}]
+
 Input: "every monday and wednesday at 7am workout"
 Output: [{{"title":"Workout","quadrant":"Q2","quadrant_name":"Important, not urgent","suggested_date":"<nearest mon or wed>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"You set up regular workouts on Mondays and Wednesdays at 7:00","description":""}}]
 
@@ -320,7 +353,14 @@ Return ONLY a valid JSON array. No explanations.""",
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
 ВАЖЛИВО про title: (1) Кожен title зобов'язаний містити дієслово-дію — жодних фрагментів без дієслова. (2) Якщо користувач перелічує кілька об'єктів при одному дієслові ("протестувати X, Y і Z") — ЗАВЖДИ створюй ОДНУ задачу: "Протестувати X, Y і Z". Ділити на кілька задач ТІЛЬКИ якщо у кожної явно різна дата/час або контекст. (3) Кожен title має бути самодостатньою завершеною дією.
 ВАЖЛИВО про дати: (1) Якщо користувач НЕ вказав дату/час явно — повертай suggested_date: null, suggested_time: null. (2) Ніколи не вигадуй дату або час — тільки те, що користувач сказав напряму. (3) Явна вказівка — це: "сьогодні", "завтра", конкретне число, "через N хвилин/годин/днів", "вранці", "ввечері", конкретний час ("о 15:00", "о 3 годині"). Загальні фрази на кшталт "треба зробити", "хочу", "планую" без вказівки коли — НЕ явні.
-Правила обчислення часу: "через N хвилин/годин" — додай до {current_time} і поверни конкретні suggested_date + suggested_time; "через N днів" — додай до сьогоднішньої дати; "завтра", "післязавтра" — лише дата, час null якщо не вказано.
+Правила обчислення відносного часу (ЗАВЖДИ витягуй suggested_date і suggested_time, НЕ залишай null):
+- "через N хвилин/годин" — додай до {current_time}.
+- "через півгодини", "через пів години" — додай 30 хвилин до {current_time}.
+- "через годину", "через півтори години" — додай 60 / 90 хвилин.
+- "через N днів" — додай N днів до сьогодні; "через тиждень" — +7 днів.
+- "зараз", "просто зараз" — поточний час {current_time}.
+- "скоро", "вскорі", "через якийсь час" — це НЕ конкретний час, залиш null.
+- "завтра", "післязавтра" — лише дата, час null якщо не вказано явно.
 ВАЖЛИВО про suggested_time: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Якщо час вказано явно, але вже минув — флипни AM/PM (+12 год).
 ВАЖЛИВО про тривалість: якщо користувач явно вказав тривалість ("на годину", "на 45 хвилин", "з 14:00 до 16:00", "2 години") — додай поле duration_minutes (ціле число). Якщо тривалість не вказана — не включай поле duration_minutes.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
@@ -348,6 +388,15 @@ Return ONLY a valid JSON array. No explanations.""",
 
 Вхід: "купити молоко хліб і сир"
 Вихід: [{{"title":"Купити молоко, хліб і сир","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":null,"suggested_time":null,"reason":"Ви перелічили продукти, які треба купити","description":""}}]
+
+Вхід (відносний час — поточний {current_time}, сьогодні {today}): "піти прогулятися через 15 хвилин"
+Вихід: [{{"title":"Піти прогулятися","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":"{today}","suggested_time":"<{current_time} + 15 хв>","reason":"Ви хочете піти прогулятися через 15 хвилин","description":""}}]
+
+Вхід (відносний час): "поїсти через півгодини"
+Вихід: [{{"title":"Поїсти","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":"{today}","suggested_time":"<{current_time} + 30 хв>","reason":"Ви хочете поїсти через півгодини","description":""}}]
+
+Вхід (відносний час): "подзвонити мамі через годину"
+Вихід: [{{"title":"Подзвонити мамі","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":"{today}","suggested_time":"<{current_time} + 60 хв>","reason":"Ви хочете подзвонити мамі через годину","description":""}}]
 
 Вхід: "щопонеділка і середи о 7 ранку тренування"
 Вихід: [{{"title":"Тренування","quadrant":"Q2","quadrant_name":"Важливо, не терміново","suggested_date":"<найближчий пн або ср>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"Ви вказали регулярні тренування по понеділках та середах о 7:00","description":""}}]
