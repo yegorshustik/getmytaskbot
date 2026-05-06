@@ -3105,7 +3105,30 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
         await update.message.reply_text(TEXTS[lang]["tasks_empty"])
         return
     text = build_tasks_by_day(rows, lang, today, tomorrow, current_time)
-    await update.message.reply_text(text, parse_mode="Markdown")
+    # Add calendar link button if connected
+    reply_markup = None
+    gcal_connected = bool(user and user.get("calendar_connected"))
+    ical_token = user.get("ical_token") if user else None
+    cal_labels = {
+        "ru": "📅 Открыть в Google Календаре",
+        "en": "📅 Open in Google Calendar",
+        "uk": "📅 Відкрити в Google Календарі",
+    }
+    apple_labels = {
+        "ru": "📅 Открыть в Apple Календаре",
+        "en": "📅 Open in Apple Calendar",
+        "uk": "📅 Відкрити в Apple Календарі",
+    }
+    if gcal_connected:
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(cal_labels.get(lang, cal_labels["ru"]), url="https://calendar.google.com")
+        ]])
+    elif ical_token:
+        open_url = f"{BASE_URL}/ical-open/{ical_token}"
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(apple_labels.get(lang, apple_labels["ru"]), url=open_url)
+        ]])
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
 
 async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
