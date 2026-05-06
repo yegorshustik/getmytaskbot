@@ -3457,34 +3457,25 @@ async def parse_checklist_text(text: str) -> dict:
 
 
 def _render_checklist(cl: dict) -> tuple[str, InlineKeyboardMarkup]:
-    """Build message text + inline keyboard for a checklist."""
+    """Build message text + inline keyboard for a checklist.
+    Text shows only the title + progress. All items are buttons below.
+    """
     pending = [i for i in cl["items"] if not i["done"]]
     done    = [i for i in cl["items"] if i["done"]]
     total = len(cl["items"])
     done_count = len(done)
-    lines = [f"📋 *{cl['title']}*", ""]
-    if pending:
-        for it in pending:
-            lines.append(f"⬜ {it['text']}")
-    if done:
-        if pending:
-            lines.append("")
-            lines.append("─────────────")
-        for it in done:
-            lines.append(f"✅ ~{it['text']}~")
-    lines.append("")
-    lines.append(f"_{done_count}/{total} выполнено_")
+    text = f"📋 *{cl['title']}*\n_{done_count}/{total} выполнено_"
 
     rows = []
-    # One row per pending item — toggle done
+    # Pending items — tap to mark done
     for it in pending:
-        label = it["text"][:40] + ("…" if len(it["text"]) > 40 else "")
+        label = it["text"][:50] + ("…" if len(it["text"]) > 50 else "")
         rows.append([InlineKeyboardButton(f"⬜ {label}", callback_data=f"clt_{it['id']}")])
-    # Done items — tap to delete (X) or untoggle (↩)
+    # Done items — tap to untoggle, ❌ to delete
     for it in done:
-        label = it["text"][:35] + ("…" if len(it["text"]) > 35 else "")
+        label = it["text"][:42] + ("…" if len(it["text"]) > 42 else "")
         rows.append([
-            InlineKeyboardButton(f"↩ {label}", callback_data=f"clt_{it['id']}"),
+            InlineKeyboardButton(f"✅ {label}", callback_data=f"clt_{it['id']}"),
             InlineKeyboardButton("❌", callback_data=f"cli_del_{it['id']}"),
         ])
     rows.append([
@@ -3492,7 +3483,7 @@ def _render_checklist(cl: dict) -> tuple[str, InlineKeyboardMarkup]:
         InlineKeyboardButton("📋 Все", callback_data="cl_list"),
         InlineKeyboardButton("🗑", callback_data=f"cl_del_{cl['id']}"),
     ])
-    return "\n".join(lines), InlineKeyboardMarkup(rows)
+    return text, InlineKeyboardMarkup(rows)
 
 
 async def checklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
