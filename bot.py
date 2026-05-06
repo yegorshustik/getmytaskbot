@@ -2908,7 +2908,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("qc_"):
         return await _cb_quadrant_change(query, context, data, chat_id, lang, user)
     if data.startswith(("cl_", "clt_", "cli_")):
-        return await _cb_checklist(query, context, data, chat_id)
+        return await _cb_checklist(query, context, data, chat_id, lang)
     if data in ("deletedata_confirm", "deletedata_cancel"):
         return await _cb_deletedata(query, context, data, chat_id, lang)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
@@ -3409,36 +3409,108 @@ async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Checklists (admin-only experimental) ────────────────────────────────────
 
-CHECKLIST_PROMPT = (
-    "Ты обрабатываешь голосовую или текстовую заметку пользователя для создания чек-листа. "
-    "Чек-лист — это список, где КАЖДЫЙ пункт пользователь хочет отмечать отдельно.\n\n"
-    "Правила:\n"
-    "- ДРОБИ каждый объект/продукт/дело на ОТДЕЛЬНЫЙ пункт. "
-    "Например 'купить молоко, хлеб, сыр' → ТРИ пункта: 'Молоко', 'Хлеб', 'Сыр'.\n"
-    "- 'позвонить маме и записаться к врачу' → ДВА пункта: 'Позвонить маме', 'Записаться к врачу'.\n"
-    "- Пункты делай короткими — 1-4 слова. Можно без глагола если из контекста ясно ('Молоко', 'Хлеб').\n"
-    "- Если в начале есть общий глагол (купить, сделать, проверить) — он подразумевается для всего списка, "
-    "его можно не повторять в каждом пункте.\n"
-    "- Убери речевой шум: 'ну', 'так', 'эээ', 'короче', 'вот', 'это самое'.\n"
-    "- Пропусти размышления без действия ('было бы неплохо', 'интересно', 'хочется').\n"
-    "- Исправляй очевидные ошибки распознавания, если из контекста понятно ('арене' → 'к ужину' если речь про продукты).\n"
-    "- Title — короткое (2-4 слова) название по смыслу контекста. "
-    "'Покупки', 'Покупка продуктов', 'Дела на завтра', 'К поездке' и т.п.\n\n"
-    "Примеры:\n"
-    "Вход: 'купить молоко, хлеб, яйца и сметану'\n"
-    "Выход: {\"title\":\"Покупки\",\"items\":[\"Молоко\",\"Хлеб\",\"Яйца\",\"Сметана\"]}\n\n"
-    "Вход: 'позвонить маме, забрать химчистку и не забыть купить дрель'\n"
-    "Выход: {\"title\":\"Дела\",\"items\":[\"Позвонить маме\",\"Забрать химчистку\",\"Купить дрель\"]}\n\n"
-    "Верни ТОЛЬКО валидный JSON: {\"title\": \"...\", \"items\": [\"...\", \"...\"]}.\n\n"
-    "Текст: "
-)
+CHECKLIST_PROMPTS = {
+    "ru": (
+        "Ты обрабатываешь голосовую или текстовую заметку пользователя для создания чек-листа. "
+        "Чек-лист — это список, где КАЖДЫЙ пункт пользователь хочет отмечать отдельно.\n\n"
+        "Правила:\n"
+        "- ДРОБИ каждый объект/продукт/дело на ОТДЕЛЬНЫЙ пункт. "
+        "Например 'купить молоко, хлеб, сыр' → ТРИ пункта: 'Молоко', 'Хлеб', 'Сыр'.\n"
+        "- 'позвонить маме и записаться к врачу' → ДВА пункта.\n"
+        "- Пункты короткие — 1-4 слова. Можно без глагола если из контекста ясно.\n"
+        "- Если общий глагол в начале (купить, сделать) — не повторяй в каждом пункте.\n"
+        "- Убери речевой шум, размышления без действия, эмоции.\n"
+        "- Title — 2-4 слова по контексту ('Покупки', 'Дела', 'К поездке').\n\n"
+        "Примеры:\n"
+        "Вход: 'купить молоко, хлеб, яйца' → {\"title\":\"Покупки\",\"items\":[\"Молоко\",\"Хлеб\",\"Яйца\"]}\n"
+        "Вход: 'позвонить маме, забрать химчистку' → {\"title\":\"Дела\",\"items\":[\"Позвонить маме\",\"Забрать химчистку\"]}\n\n"
+        "Верни ТОЛЬКО JSON: {\"title\": \"...\", \"items\": [\"...\"]}.\n\nТекст: "
+    ),
+    "en": (
+        "You're processing a user's voice or text note to create a checklist. "
+        "A checklist is a list where EACH item the user wants to check off separately.\n\n"
+        "Rules:\n"
+        "- SPLIT each object/product/task into a SEPARATE item. "
+        "E.g. 'buy milk, bread, cheese' → THREE items: 'Milk', 'Bread', 'Cheese'.\n"
+        "- 'call mom and book a doctor' → TWO items.\n"
+        "- Items are short — 1-4 words. Can be verbless if context is clear.\n"
+        "- If a common verb starts the sentence (buy, do) — don't repeat it in every item.\n"
+        "- Remove speech noise, reflections without action, emotions.\n"
+        "- Title — 2-4 words from context ('Groceries', 'Errands', 'Trip').\n\n"
+        "Examples:\n"
+        "Input: 'buy milk, bread, eggs' → {\"title\":\"Groceries\",\"items\":[\"Milk\",\"Bread\",\"Eggs\"]}\n"
+        "Input: 'call mom, pick up dry cleaning' → {\"title\":\"Errands\",\"items\":[\"Call mom\",\"Pick up dry cleaning\"]}\n\n"
+        "Return ONLY JSON: {\"title\": \"...\", \"items\": [\"...\"]}.\n\nText: "
+    ),
+    "uk": (
+        "Ти обробляєш голосову або текстову нотатку користувача для створення чек-листа. "
+        "Чек-лист — список, де КОЖЕН пункт користувач хоче відзначати окремо.\n\n"
+        "Правила:\n"
+        "- ДРОБИ кожен об'єкт/продукт/справу на ОКРЕМИЙ пункт. "
+        "Напр. 'купити молоко, хліб, сир' → ТРИ пункти.\n"
+        "- 'подзвонити мамі і записатися до лікаря' → ДВА пункти.\n"
+        "- Пункти короткі — 1-4 слова. Можна без дієслова якщо з контексту ясно.\n"
+        "- Якщо загальне дієслово на початку (купити, зробити) — не повторюй у кожному пункті.\n"
+        "- Прибери мовленнєвий шум, роздуми без дії, емоції.\n"
+        "- Title — 2-4 слова за контекстом ('Покупки', 'Справи', 'До поїздки').\n\n"
+        "Приклади:\n"
+        "Вхід: 'купити молоко, хліб, яйця' → {\"title\":\"Покупки\",\"items\":[\"Молоко\",\"Хліб\",\"Яйця\"]}\n\n"
+        "Поверни ТІЛЬКИ JSON: {\"title\": \"...\", \"items\": [\"...\"]}.\n\nТекст: "
+    ),
+}
 
-async def parse_checklist_text(text: str) -> dict:
+CHECKLIST_DEFAULT_TITLE = {"ru": "Чек-лист", "en": "Checklist", "uk": "Чек-лист"}
+
+CHECKLIST_UI = {
+    "ru": {
+        "menu_title": "*Чек-листы*",
+        "menu_empty": "Пока пусто. Нажми «Новый чек-лист» — потом надиктуй или напиши что нужно сделать.",
+        "menu_pick": "Выбери существующий или создай новый.",
+        "btn_new": "➕ Новый чек-лист",
+        "btn_add_item": "➕ Пункт",
+        "btn_all": "📋 Все",
+        "ask_create": "🎙 Надиктуй или напиши что должно быть в чек-листе. Можно одной фразой, можно длинно.",
+        "ask_add": "📝 Что добавить в «{title}»? Надиктуй или напиши.",
+        "no_items": "⚠️ Не распознал ни одного пункта. Попробуй ещё раз.",
+        "deleted": "🗑 Чек-лист «{title}» удалён.",
+        "progress": "{done}/{total} выполнено",
+    },
+    "en": {
+        "menu_title": "*Checklists*",
+        "menu_empty": "Empty so far. Tap «New checklist» — then dictate or type what needs to be done.",
+        "menu_pick": "Pick an existing one or create a new one.",
+        "btn_new": "➕ New checklist",
+        "btn_add_item": "➕ Item",
+        "btn_all": "📋 All",
+        "ask_create": "🎙 Dictate or type what should be in the checklist. One phrase or long — both work.",
+        "ask_add": "📝 What to add to «{title}»? Dictate or type.",
+        "no_items": "⚠️ Didn't recognize any items. Try again.",
+        "deleted": "🗑 Checklist «{title}» deleted.",
+        "progress": "{done}/{total} done",
+    },
+    "uk": {
+        "menu_title": "*Чек-листи*",
+        "menu_empty": "Поки порожньо. Натисни «Новий чек-лист» — потім надиктуй або напиши що треба зробити.",
+        "menu_pick": "Вибери існуючий або створи новий.",
+        "btn_new": "➕ Новий чек-лист",
+        "btn_add_item": "➕ Пункт",
+        "btn_all": "📋 Всі",
+        "ask_create": "🎙 Надиктуй або напиши що має бути у чек-листі. Однією фразою або довго — обидва варіанти ок.",
+        "ask_add": "📝 Що додати в «{title}»? Надиктуй або напиши.",
+        "no_items": "⚠️ Не розпізнав жодного пункту. Спробуй ще раз.",
+        "deleted": "🗑 Чек-лист «{title}» видалено.",
+        "progress": "{done}/{total} виконано",
+    },
+}
+
+
+async def parse_checklist_text(text: str, lang: str = "ru") -> dict:
     try:
+        prompt = CHECKLIST_PROMPTS.get(lang, CHECKLIST_PROMPTS["ru"])
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": CHECKLIST_PROMPT + text}],
+            messages=[{"role": "user", "content": prompt + text}],
             temperature=0.2,
             max_tokens=800,
         )
@@ -3448,30 +3520,31 @@ async def parse_checklist_text(text: str) -> dict:
             if raw.startswith("json"):
                 raw = raw[4:]
         data = json.loads(raw.strip())
-        title = (data.get("title") or "Чек-лист").strip()[:80]
+        default_title = CHECKLIST_DEFAULT_TITLE.get(lang, "Checklist")
+        title = (data.get("title") or default_title).strip()[:80]
         items = [str(x).strip() for x in (data.get("items") or []) if str(x).strip()]
         return {"title": title, "items": items[:100]}
     except Exception as e:
         logger.error(f"parse_checklist_text failed: {e}")
-        return {"title": "Чек-лист", "items": []}
+        return {"title": CHECKLIST_DEFAULT_TITLE.get(lang, "Checklist"), "items": []}
 
 
-def _render_checklist(cl: dict) -> tuple[str, InlineKeyboardMarkup]:
+def _render_checklist(cl: dict, lang: str = "ru") -> tuple[str, InlineKeyboardMarkup]:
     """Build message text + inline keyboard for a checklist.
     Text shows only the title + progress. All items are buttons below.
     """
+    ui = CHECKLIST_UI.get(lang, CHECKLIST_UI["ru"])
     pending = [i for i in cl["items"] if not i["done"]]
     done    = [i for i in cl["items"] if i["done"]]
     total = len(cl["items"])
     done_count = len(done)
-    text = f"📋 *{cl['title']}*\n_{done_count}/{total} выполнено_"
+    progress = ui["progress"].format(done=done_count, total=total)
+    text = f"📋 *{cl['title']}*\n_{progress}_"
 
     rows = []
-    # Pending items — tap to mark done
     for it in pending:
         label = it["text"][:50] + ("…" if len(it["text"]) > 50 else "")
         rows.append([InlineKeyboardButton(f"⬜ {label}", callback_data=f"clt_{it['id']}")])
-    # Done items — tap to untoggle, ❌ to delete
     for it in done:
         label = it["text"][:42] + ("…" if len(it["text"]) > 42 else "")
         rows.append([
@@ -3479,42 +3552,40 @@ def _render_checklist(cl: dict) -> tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("❌", callback_data=f"cli_del_{it['id']}"),
         ])
     rows.append([
-        InlineKeyboardButton("➕ Пункт", callback_data=f"cl_add_{cl['id']}"),
-        InlineKeyboardButton("📋 Все", callback_data="cl_list"),
+        InlineKeyboardButton(ui["btn_add_item"], callback_data=f"cl_add_{cl['id']}"),
+        InlineKeyboardButton(ui["btn_all"], callback_data="cl_list"),
         InlineKeyboardButton("🗑", callback_data=f"cl_del_{cl['id']}"),
     ])
     return text, InlineKeyboardMarkup(rows)
 
 
 async def checklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only: open the checklists menu."""
+    """Open the checklists menu."""
     chat_id = update.effective_chat.id
-    if chat_id != BOT_OWNER_ID:
-        return
     await _show_checklists_menu(update.message, chat_id)
 
 
 async def _show_checklists_menu(message, chat_id: int):
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    ui = CHECKLIST_UI.get(lang, CHECKLIST_UI["ru"])
     items = list_checklists(chat_id)
     rows = []
     for cl in items:
         label = f"📋 {cl['title']} ({cl['done']}/{cl['total']})"
         rows.append([InlineKeyboardButton(label, callback_data=f"cl_open_{cl['id']}")])
-    rows.append([InlineKeyboardButton("➕ Новый чек-лист", callback_data="cl_new")])
-    text = "*Чек-листы*\n\nВыбери существующий или создай новый." if items else \
-           "*Чек-листы*\n\nПока пусто. Нажми «Новый чек-лист» — потом надиктуй или напиши что нужно сделать."
+    rows.append([InlineKeyboardButton(ui["btn_new"], callback_data="cl_new")])
+    body = ui["menu_pick"] if items else ui["menu_empty"]
+    text = f"{ui['menu_title']}\n\n{body}"
     await message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(rows))
 
 
-async def _cb_checklist(query, context, data: str, chat_id: int):
-    """All checklist-related callbacks. Owner-only — silently no-op for others."""
-    if chat_id != BOT_OWNER_ID:
-        return
+async def _cb_checklist(query, context, data: str, chat_id: int, lang: str = "ru"):
+    """All checklist-related callbacks."""
+    ui = CHECKLIST_UI.get(lang, CHECKLIST_UI["ru"])
     if data == "cl_new":
         context.user_data["checklist_mode"] = "create"
-        await query.message.reply_text(
-            "🎙 Надиктуй или напиши что должно быть в чек-листе. Можно одной фразой, можно длинно.",
-        )
+        await query.message.reply_text(ui["ask_create"])
         return
     if data == "cl_list":
         await _show_checklists_menu(query.message, chat_id)
@@ -3523,9 +3594,9 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
         cid = int(data.split("_")[2])
         cl = get_checklist(cid)
         if not cl or cl["chat_id"] != chat_id:
-            await query.answer("Не найдено")
+            await query.answer("Not found")
             return
-        text, kb = _render_checklist(cl)
+        text, kb = _render_checklist(cl, lang)
         await query.message.reply_text(text, parse_mode="Markdown", reply_markup=kb)
         return
     if data.startswith("cl_del_"):
@@ -3535,7 +3606,7 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
             return
         delete_checklist(cid)
         try:
-            await query.message.edit_text(f"🗑 Чек-лист «{cl['title']}» удалён.")
+            await query.message.edit_text(ui["deleted"].format(title=cl["title"]))
         except Exception:
             pass
         return
@@ -3546,13 +3617,11 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
             return
         context.user_data["checklist_mode"] = "add"
         context.user_data["checklist_target"] = cid
-        await query.message.reply_text(f"📝 Что добавить в «{cl['title']}»? Надиктуй или напиши.")
+        await query.message.reply_text(ui["ask_add"].format(title=cl["title"]))
         return
     if data.startswith("clt_"):
-        # Toggle item
         item_id = int(data.split("_")[1])
         toggle_checklist_item(item_id)
-        # Find which checklist this belongs to
         conn = sqlite3.connect("users.db")
         row = conn.execute("SELECT checklist_id FROM checklist_items WHERE id=?", (item_id,)).fetchone()
         conn.close()
@@ -3561,7 +3630,7 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
         cl = get_checklist(row[0])
         if not cl:
             return
-        text, kb = _render_checklist(cl)
+        text, kb = _render_checklist(cl, lang)
         try:
             await query.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
         except Exception as e:
@@ -3578,7 +3647,7 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
         cl = get_checklist(row[0])
         if not cl:
             return
-        text, kb = _render_checklist(cl)
+        text, kb = _render_checklist(cl, lang)
         try:
             await query.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
         except Exception as e:
@@ -3589,24 +3658,27 @@ async def _cb_checklist(query, context, data: str, chat_id: int):
 async def _handle_checklist_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, chat_id: int) -> bool:
     """If user is in checklist creation/add mode — handle text and return True."""
     mode = context.user_data.get("checklist_mode")
-    if not mode or chat_id != BOT_OWNER_ID:
+    if not mode:
         return False
-    parsed = await parse_checklist_text(text)
+    user = get_user(chat_id)
+    lang = user["lang"] if user else "ru"
+    ui = CHECKLIST_UI.get(lang, CHECKLIST_UI["ru"])
+    parsed = await parse_checklist_text(text, lang)
     items = parsed["items"]
     if not items:
-        await update.message.reply_text("⚠️ Не распознал ни одного пункта. Попробуй ещё раз.")
+        await update.message.reply_text(ui["no_items"])
         return True
     if mode == "create":
         cid = create_checklist(chat_id, parsed["title"], items)
         cl = get_checklist(cid)
-        msg_text, kb = _render_checklist(cl)
+        msg_text, kb = _render_checklist(cl, lang)
         await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=kb)
     elif mode == "add":
         cid = context.user_data.get("checklist_target")
         if cid:
             add_checklist_items(cid, items)
             cl = get_checklist(cid)
-            msg_text, kb = _render_checklist(cl)
+            msg_text, kb = _render_checklist(cl, lang)
             await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=kb)
     context.user_data.pop("checklist_mode", None)
     context.user_data.pop("checklist_target", None)
@@ -4540,12 +4612,13 @@ async def main():
     await bot_app.initialize()
     await bot_app.start()
     await bot_app.bot.set_my_commands([
-        BotCommand("start",    "🏠 Главное меню"),
-        BotCommand("tasks",    "📋 Мои задачи"),
-        BotCommand("goals",    "🎯 Мои цели"),
-        BotCommand("settings", "⚙️ Настройки"),
-        BotCommand("connect",  "📅 Подключить Calendar"),
-        BotCommand("help",     "❓ Помощь"),
+        BotCommand("start",     "🏠 Главное меню"),
+        BotCommand("tasks",     "📋 Мои задачи"),
+        BotCommand("goals",     "🎯 Мои цели"),
+        BotCommand("checklist", "📝 Чек-листы"),
+        BotCommand("settings",  "⚙️ Настройки"),
+        BotCommand("connect",   "📅 Подключить Calendar"),
+        BotCommand("help",      "❓ Помощь"),
     ])
     await bot_app.updater.start_polling(allowed_updates=list(Update.ALL_TYPES))
     print("Бот запущен...")
