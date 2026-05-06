@@ -41,6 +41,9 @@ from db import (
     save_oauth_state, pop_oauth_state,
     find_upcoming_tasks, reschedule_task_in_db,
     get_recurring_tasks_for_today,
+    create_checklist, get_checklist, list_checklists,
+    toggle_checklist_item, add_checklist_items,
+    delete_checklist_item, delete_checklist,
 )
 
 
@@ -1706,6 +1709,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("awaiting_feedback")
         await _send_feedback_to_owner(update, context, chat_id, lang)
         return
+    # Checklist mode (admin only): intercept text and route to checklist parser
+    if await _handle_checklist_input(update, context, user_text, chat_id):
+        return
     t_check = TEXTS[lang]
     _menu_buttons = {t_check["btn_my_tasks"].split("(")[0].strip(), t_check["btn_settings"],
                      t_check["btn_help"], t_check["btn_timezone"], t_check["btn_connect"]}
@@ -1871,6 +1877,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recognized_msg = await update.message.reply_text(TEXTS[lang]["recognized"] + text)
         cleanup_ids.append(recognized_msg.message_id)
         context.user_data["_cleanup_ids"] = cleanup_ids
+        # Checklist mode (admin only): intercept transcribed voice and route to checklist parser
+        if await _handle_checklist_input(update, context, text, chat_id):
+            return
         # Route through goal state machine if active
         goal_step = context.user_data.get("goal_creation_step")
         if goal_step == "deadline":
@@ -2898,6 +2907,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_reminder_action(query, context, data, chat_id, lang, user)
     if data.startswith("qc_"):
         return await _cb_quadrant_change(query, context, data, chat_id, lang, user)
+    if data.startswith(("cl_", "clt_", "cli_")):
+        return await _cb_checklist(query, context, data, chat_id)
     if data in ("deletedata_confirm", "deletedata_cancel"):
         return await _cb_deletedata(query, context, data, chat_id, lang)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
@@ -3394,6 +3405,211 @@ async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ Отменить", callback_data=f"announce_cancel_{announce_id}"),
     ]])
     await msg.edit_text(preview, parse_mode="Markdown", reply_markup=keyboard)
+
+
+# ─── Checklists (admin-only experimental) ────────────────────────────────────
+
+CHECKLIST_PROMPT = (
+    "Ты обрабатываешь голосовую или текстовую заметку пользователя для создания чек-листа. "
+    "Извлеки из текста список конкретных пунктов-действий и краткое название чек-листа.\n\n"
+    "Правила:\n"
+    "- Один пункт = одно конкретное действие или объект.\n"
+    "- Если пользователь перечислил продукты или объекты под одним глаголом ('купить молоко, хлеб, сыр') — "
+    "ОСТАВЬ ИХ ОДНИМ ПУНКТОМ ('Купить молоко, хлеб, сыр'). Не дроби.\n"
+    "- Убери речевой шум: 'ну', 'так', 'эээ', 'короче', 'вот'.\n"
+    "- Пропусти размышления и комментарии без действия ('было бы неплохо', 'интересно').\n"
+    "- Title — короткое (2-4 слова) название по смыслу. Если непонятно — 'Чек-лист'.\n\n"
+    "Верни ТОЛЬКО валидный JSON: {\"title\": \"...\", \"items\": [\"...\", \"...\"]}.\n\n"
+    "Текст: "
+)
+
+async def parse_checklist_text(text: str) -> dict:
+    try:
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": CHECKLIST_PROMPT + text}],
+            temperature=0.2,
+            max_tokens=800,
+        )
+        raw = resp.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw.strip())
+        title = (data.get("title") or "Чек-лист").strip()[:80]
+        items = [str(x).strip() for x in (data.get("items") or []) if str(x).strip()]
+        return {"title": title, "items": items[:100]}
+    except Exception as e:
+        logger.error(f"parse_checklist_text failed: {e}")
+        return {"title": "Чек-лист", "items": []}
+
+
+def _render_checklist(cl: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """Build message text + inline keyboard for a checklist."""
+    pending = [i for i in cl["items"] if not i["done"]]
+    done    = [i for i in cl["items"] if i["done"]]
+    total = len(cl["items"])
+    done_count = len(done)
+    lines = [f"📋 *{cl['title']}*", ""]
+    if pending:
+        for it in pending:
+            lines.append(f"⬜ {it['text']}")
+    if done:
+        if pending:
+            lines.append("")
+            lines.append("─────────────")
+        for it in done:
+            lines.append(f"✅ ~{it['text']}~")
+    lines.append("")
+    lines.append(f"_{done_count}/{total} выполнено_")
+
+    rows = []
+    # One row per pending item — toggle done
+    for it in pending:
+        label = it["text"][:40] + ("…" if len(it["text"]) > 40 else "")
+        rows.append([InlineKeyboardButton(f"⬜ {label}", callback_data=f"clt_{it['id']}")])
+    # Done items — tap to delete (X) or untoggle (↩)
+    for it in done:
+        label = it["text"][:35] + ("…" if len(it["text"]) > 35 else "")
+        rows.append([
+            InlineKeyboardButton(f"↩ {label}", callback_data=f"clt_{it['id']}"),
+            InlineKeyboardButton("❌", callback_data=f"cli_del_{it['id']}"),
+        ])
+    rows.append([
+        InlineKeyboardButton("➕ Пункт", callback_data=f"cl_add_{cl['id']}"),
+        InlineKeyboardButton("📋 Все", callback_data="cl_list"),
+        InlineKeyboardButton("🗑", callback_data=f"cl_del_{cl['id']}"),
+    ])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def checklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: open the checklists menu."""
+    chat_id = update.effective_chat.id
+    if chat_id != BOT_OWNER_ID:
+        return
+    await _show_checklists_menu(update.message, chat_id)
+
+
+async def _show_checklists_menu(message, chat_id: int):
+    items = list_checklists(chat_id)
+    rows = []
+    for cl in items:
+        label = f"📋 {cl['title']} ({cl['done']}/{cl['total']})"
+        rows.append([InlineKeyboardButton(label, callback_data=f"cl_open_{cl['id']}")])
+    rows.append([InlineKeyboardButton("➕ Новый чек-лист", callback_data="cl_new")])
+    text = "*Чек-листы*\n\nВыбери существующий или создай новый." if items else \
+           "*Чек-листы*\n\nПока пусто. Нажми «Новый чек-лист» — потом надиктуй или напиши что нужно сделать."
+    await message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _cb_checklist(query, context, data: str, chat_id: int):
+    """All checklist-related callbacks. Owner-only — silently no-op for others."""
+    if chat_id != BOT_OWNER_ID:
+        return
+    if data == "cl_new":
+        context.user_data["checklist_mode"] = "create"
+        await query.message.reply_text(
+            "🎙 Надиктуй или напиши что должно быть в чек-листе. Можно одной фразой, можно длинно.",
+        )
+        return
+    if data == "cl_list":
+        await _show_checklists_menu(query.message, chat_id)
+        return
+    if data.startswith("cl_open_"):
+        cid = int(data.split("_")[2])
+        cl = get_checklist(cid)
+        if not cl or cl["chat_id"] != chat_id:
+            await query.answer("Не найдено")
+            return
+        text, kb = _render_checklist(cl)
+        await query.message.reply_text(text, parse_mode="Markdown", reply_markup=kb)
+        return
+    if data.startswith("cl_del_"):
+        cid = int(data.split("_")[2])
+        cl = get_checklist(cid)
+        if not cl or cl["chat_id"] != chat_id:
+            return
+        delete_checklist(cid)
+        try:
+            await query.message.edit_text(f"🗑 Чек-лист «{cl['title']}» удалён.")
+        except Exception:
+            pass
+        return
+    if data.startswith("cl_add_"):
+        cid = int(data.split("_")[2])
+        cl = get_checklist(cid)
+        if not cl or cl["chat_id"] != chat_id:
+            return
+        context.user_data["checklist_mode"] = "add"
+        context.user_data["checklist_target"] = cid
+        await query.message.reply_text(f"📝 Что добавить в «{cl['title']}»? Надиктуй или напиши.")
+        return
+    if data.startswith("clt_"):
+        # Toggle item
+        item_id = int(data.split("_")[1])
+        toggle_checklist_item(item_id)
+        # Find which checklist this belongs to
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT checklist_id FROM checklist_items WHERE id=?", (item_id,)).fetchone()
+        conn.close()
+        if not row:
+            return
+        cl = get_checklist(row[0])
+        if not cl:
+            return
+        text, kb = _render_checklist(cl)
+        try:
+            await query.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+        except Exception as e:
+            logger.error(f"checklist toggle re-render failed: {e}")
+        return
+    if data.startswith("cli_del_"):
+        item_id = int(data.split("_")[2])
+        conn = sqlite3.connect("users.db")
+        row = conn.execute("SELECT checklist_id FROM checklist_items WHERE id=?", (item_id,)).fetchone()
+        conn.close()
+        if not row:
+            return
+        delete_checklist_item(item_id)
+        cl = get_checklist(row[0])
+        if not cl:
+            return
+        text, kb = _render_checklist(cl)
+        try:
+            await query.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+        except Exception as e:
+            logger.error(f"checklist item delete re-render failed: {e}")
+        return
+
+
+async def _handle_checklist_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, chat_id: int) -> bool:
+    """If user is in checklist creation/add mode — handle text and return True."""
+    mode = context.user_data.get("checklist_mode")
+    if not mode or chat_id != BOT_OWNER_ID:
+        return False
+    parsed = await parse_checklist_text(text)
+    items = parsed["items"]
+    if not items:
+        await update.message.reply_text("⚠️ Не распознал ни одного пункта. Попробуй ещё раз.")
+        return True
+    if mode == "create":
+        cid = create_checklist(chat_id, parsed["title"], items)
+        cl = get_checklist(cid)
+        msg_text, kb = _render_checklist(cl)
+        await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=kb)
+    elif mode == "add":
+        cid = context.user_data.get("checklist_target")
+        if cid:
+            add_checklist_items(cid, items)
+            cl = get_checklist(cid)
+            msg_text, kb = _render_checklist(cl)
+            await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=kb)
+    context.user_data.pop("checklist_mode", None)
+    context.user_data.pop("checklist_target", None)
+    return True
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4279,6 +4495,7 @@ async def main():
     bot_app.add_handler(CommandHandler("stats", stats_command))
     bot_app.add_handler(CommandHandler("admin", stats_command))
     bot_app.add_handler(CommandHandler("announce", announce_command))
+    bot_app.add_handler(CommandHandler("checklist", checklist_command))
     bot_app.add_handler(CommandHandler("goals", goals_command))
     bot_app.add_handler(CommandHandler("deletedata", deletedata_command))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

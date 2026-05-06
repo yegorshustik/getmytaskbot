@@ -139,6 +139,107 @@ def init_db():
         c.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
     except sqlite3.OperationalError:
         pass
+    # Experimental: checklists (admin only for now)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS checklists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            title TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            checklist_id INTEGER,
+            text TEXT,
+            done INTEGER DEFAULT 0,
+            position INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+# ─── Checklists (experimental) ───────────────────────────────────────────────
+
+def create_checklist(chat_id: int, title: str, items: list[str]) -> int:
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO checklists (chat_id, title) VALUES (?, ?)", (chat_id, title))
+    cid = c.lastrowid
+    for i, item_text in enumerate(items):
+        c.execute("INSERT INTO checklist_items (checklist_id, text, position) VALUES (?,?,?)",
+                  (cid, item_text, i))
+    conn.commit()
+    conn.close()
+    return cid
+
+
+def get_checklist(checklist_id: int) -> dict | None:
+    conn = sqlite3.connect("users.db")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM checklists WHERE id=?", (checklist_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    items = conn.execute(
+        "SELECT id, text, done, position FROM checklist_items WHERE checklist_id=? ORDER BY done ASC, position ASC, id ASC",
+        (checklist_id,)
+    ).fetchall()
+    conn.close()
+    return {
+        "id": row["id"],
+        "chat_id": row["chat_id"],
+        "title": row["title"],
+        "created_at": row["created_at"],
+        "items": [dict(i) for i in items],
+    }
+
+
+def list_checklists(chat_id: int) -> list[dict]:
+    conn = sqlite3.connect("users.db")
+    rows = conn.execute(
+        """SELECT cl.id, cl.title, cl.created_at,
+                  (SELECT COUNT(*) FROM checklist_items WHERE checklist_id=cl.id) AS total,
+                  (SELECT COUNT(*) FROM checklist_items WHERE checklist_id=cl.id AND done=1) AS done_count
+           FROM checklists cl WHERE cl.chat_id=? ORDER BY cl.id DESC""",
+        (chat_id,)
+    ).fetchall()
+    conn.close()
+    return [{"id": r[0], "title": r[1], "created_at": r[2], "total": r[3], "done": r[4]} for r in rows]
+
+
+def toggle_checklist_item(item_id: int) -> None:
+    conn = sqlite3.connect("users.db")
+    conn.execute("UPDATE checklist_items SET done = 1 - done WHERE id=?", (item_id,))
+    conn.commit()
+    conn.close()
+
+
+def add_checklist_items(checklist_id: int, items: list[str]) -> None:
+    conn = sqlite3.connect("users.db")
+    cur = conn.execute("SELECT COALESCE(MAX(position), -1) FROM checklist_items WHERE checklist_id=?", (checklist_id,))
+    base = cur.fetchone()[0]
+    for i, txt in enumerate(items, start=1):
+        conn.execute("INSERT INTO checklist_items (checklist_id, text, position) VALUES (?,?,?)",
+                     (checklist_id, txt, base + i))
+    conn.commit()
+    conn.close()
+
+
+def delete_checklist_item(item_id: int) -> None:
+    conn = sqlite3.connect("users.db")
+    conn.execute("DELETE FROM checklist_items WHERE id=?", (item_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_checklist(checklist_id: int) -> None:
+    conn = sqlite3.connect("users.db")
+    conn.execute("DELETE FROM checklist_items WHERE checklist_id=?", (checklist_id,))
+    conn.execute("DELETE FROM checklists WHERE id=?", (checklist_id,))
     conn.commit()
     conn.close()
 
