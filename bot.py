@@ -518,9 +518,10 @@ async def _check_reminders_for_user(chat_id, lang, now, time_min, time_max):
             logger.warning(f"check_reminders: Google Calendar timeout for {chat_id}")
             return
         events = events_result.get("items", [])
-        # Pre-load event IDs already tracked in bot DB — their reminders are handled by check_task_reminders
+        # Pre-load event IDs already tracked in bot DB — their reminders are handled by check_task_reminders.
+        # Include done tasks too: if user marked the task done in the bot, no calendar reminder either.
         bot_event_rows = await db_fetchall(
-            "SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
+            "SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL",
             (chat_id,)
         )
         _bot_event_ids = {row[0] for row in bot_event_rows}
