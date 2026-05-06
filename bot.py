@@ -3679,6 +3679,20 @@ async def _handle_checklist_input(update: Update, context: ContextTypes.DEFAULT_
     ui = CHECKLIST_UI.get(lang, CHECKLIST_UI["ru"])
     parsed = await parse_checklist_text(text, lang)
     items = parsed["items"]
+    # Fallback: if no items but input is short (1-4 words), treat the whole input as title
+    # — user just wanted to name an empty checklist they'll fill later.
+    word_count = len(text.split())
+    if not items and mode == "create" and word_count <= 4:
+        title = text.strip()[:80] or parsed["title"]
+        cid = create_checklist(chat_id, title, [])
+        cl = get_checklist(cid)
+        msg_text, kb = _render_checklist(cl, lang)
+        await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=kb)
+        # Stay in "add" mode for this checklist so user can immediately dictate items
+        context.user_data["checklist_mode"] = "add"
+        context.user_data["checklist_target"] = cid
+        await update.message.reply_text(ui["ask_add"].format(title=title))
+        return True
     if not items:
         await update.message.reply_text(ui["no_items"])
         return True
