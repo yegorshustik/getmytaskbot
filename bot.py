@@ -252,6 +252,18 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
 Если в тексте есть URL (ссылка на Zoom, Meet, сайт и т.д.) — добавь поле url с этой ссылкой. Иначе не включай поле url.
 
+ВАЖНО про классификацию по квадрантам Эйзенхауэра. Используй эти правила:
+- **Q1 (Срочно и важно)** — горящий дедлайн (сегодня/завтра) И значимые последствия: рабочий дедлайн, здоровье, дети, финансы, юридические сроки. Примеры: "сдать отчёт сегодня", "записать ребёнка к врачу", "оплатить счёт до завтра".
+- **Q2 (Важно, не срочно)** — личное развитие, спорт, отношения, планирование, обучение, регулярные тренировки, встречи с близкими, работа над целями. Дедлайн обычно неделя+ или его нет. Примеры: "тренировка", "встреча с другом", "изучить английский", "план на квартал".
+- **Q3 (Срочно, не важно)** — мелкие повседневные дела, бытовые поручения, обычные звонки, покупки, краткие встречи. Часто на сегодня/завтра, но без больших последствий если отложить. Примеры: "позвонить в банк", "купить молоко", "забрать химчистку", "ответить на сообщение".
+- **Q4 (Не срочно, не важно)** — развлечения, скроллинг, прокрастинация. Обычно сюда сами задачи попадают редко.
+
+Дополнительные сигналы:
+- Задача БЕЗ даты и без явного контекста важности → по умолчанию Q3 (мелкое дело).
+- Задача с дедлайном на сегодня/завтра без признаков высокой важности → Q3, не Q1.
+- Регулярная (recurring) задача → почти всегда Q2 (это про привычки и развитие).
+- Если в тексте звучит «важно», «срочно», «дедлайн», «пожар», «горит» — поднимай в Q1.
+
 ПРИМЕРЫ (вход → выход):
 
 Вход: "позвонить Пете завтра в 3"
@@ -277,6 +289,18 @@ IMPORTANT about duration: if the user explicitly states a duration ("for an hour
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
 If the text contains a URL (Zoom, Meet, website link, etc.) — add a url field with that link. Otherwise don't include the url field.
 
+IMPORTANT about Eisenhower quadrant classification. Use these rules:
+- **Q1 (Urgent and important)** — burning deadline (today/tomorrow) AND significant consequences: work deadlines, health, kids, finances, legal deadlines. Examples: "submit report today", "schedule kid's doctor appointment", "pay bill by tomorrow".
+- **Q2 (Important, not urgent)** — personal growth, exercise, relationships, planning, learning, regular workouts, meetings with loved ones, working on goals. Usually deadline is a week+ or no deadline. Examples: "workout", "meet a friend", "learn English", "quarterly plan".
+- **Q3 (Urgent, not important)** — small daily tasks, errands, routine calls, shopping, brief meetings. Often today/tomorrow but with low cost if delayed. Examples: "call the bank", "buy milk", "pick up dry cleaning", "reply to message".
+- **Q4 (Not urgent, not important)** — entertainment, scrolling, procrastination. Tasks rarely fall here directly.
+
+Additional signals:
+- Task with NO date and no explicit importance signals → default to Q3 (small daily task).
+- Task due today/tomorrow without high-importance signals → Q3, not Q1.
+- Recurring tasks → almost always Q2 (habits and development).
+- If the text contains words like "important", "urgent", "deadline", "fire", "burning" — escalate to Q1.
+
 EXAMPLES (input → output):
 
 Input: "call Pete tomorrow at 3pm"
@@ -301,6 +325,18 @@ Return ONLY a valid JSON array. No explanations.""",
 ВАЖЛИВО про тривалість: якщо користувач явно вказав тривалість ("на годину", "на 45 хвилин", "з 14:00 до 16:00", "2 години") — додай поле duration_minutes (ціле число). Якщо тривалість не вказана — не включай поле duration_minutes.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
 Якщо в тексті є URL (посилання на Zoom, Meet, сайт тощо) — додай поле url з цим посиланням. Інакше не включай поле url.
+
+ВАЖЛИВО про класифікацію за квадрантами Ейзенхауера. Використовуй ці правила:
+- **Q1 (Терміново і важливо)** — палаючий дедлайн (сьогодні/завтра) І значущі наслідки: робочий дедлайн, здоров'я, діти, фінанси, юридичні строки. Приклади: "здати звіт сьогодні", "записати дитину до лікаря", "сплатити рахунок до завтра".
+- **Q2 (Важливо, не терміново)** — особистий розвиток, спорт, стосунки, планування, навчання, регулярні тренування, зустрічі з близькими, робота над цілями. Дедлайн зазвичай тиждень+ або його немає. Приклади: "тренування", "зустріч з другом", "вивчити англійську", "план на квартал".
+- **Q3 (Терміново, не важливо)** — дрібні повсякденні справи, побутові доручення, звичайні дзвінки, покупки, короткі зустрічі. Часто на сьогодні/завтра, але без великих наслідків якщо відкласти. Приклади: "подзвонити в банк", "купити молоко", "забрати хімчистку", "відповісти на повідомлення".
+- **Q4 (Не терміново, не важливо)** — розваги, скролінг, прокрастинація. Задачі рідко сюди потрапляють напряму.
+
+Додаткові сигнали:
+- Задача БЕЗ дати і без явного контексту важливості → за замовчуванням Q3 (дрібна справа).
+- Задача з дедлайном на сьогодні/завтра без ознак високої важливості → Q3, не Q1.
+- Регулярна (recurring) задача → майже завжди Q2 (це про звички і розвиток).
+- Якщо в тексті звучить «важливо», «терміново», «дедлайн», «пожежа», «горить» — піднімай у Q1.
 
 ПРИКЛАДИ (вхід → вихід):
 
@@ -1046,6 +1082,12 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
 
 QUADRANT_EMOJI = {"Q1": "🔴", "Q2": "🟡", "Q3": "🔵", "Q4": "⚫"}
 
+QUADRANT_NAMES = {
+    "ru": {"Q1": "Срочно и важно", "Q2": "Важно, не срочно", "Q3": "Срочно, не важно", "Q4": "Не срочно, не важно"},
+    "en": {"Q1": "Urgent and important", "Q2": "Important, not urgent", "Q3": "Urgent, not important", "Q4": "Not urgent, not important"},
+    "uk": {"Q1": "Терміново і важливо", "Q2": "Важливо, не терміново", "Q3": "Терміново, не важливо", "Q4": "Не терміново, не важливо"},
+}
+
 POPULAR_TIMEZONES = [
     ("UTC−8  Los Angeles",  "America/Los_Angeles"),
     ("UTC−6  Chicago",      "America/Chicago"),
@@ -1222,17 +1264,29 @@ async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
             ])
         else:
             text = base_text + f"_{task['reason']}_"
+            # Quadrant change row — 4 small buttons; the active one gets a marker
+            current_q = task.get("quadrant", "Q3")
+            def _q_label(q):
+                emoji = QUADRANT_EMOJI[q]
+                return f"• {emoji} •" if q == current_q else emoji
+            quadrant_row = [
+                InlineKeyboardButton(_q_label("Q1"), callback_data=f"qc_{i}_Q1"),
+                InlineKeyboardButton(_q_label("Q2"), callback_data=f"qc_{i}_Q2"),
+                InlineKeyboardButton(_q_label("Q3"), callback_data=f"qc_{i}_Q3"),
+                InlineKeyboardButton(_q_label("Q4"), callback_data=f"qc_{i}_Q4"),
+            ]
             gcal_connected = bool(user and user.get("calendar_connected"))
             ical_subscribed = bool(user and user.get("ical_token"))
             if gcal_connected or ical_subscribed:
                 # Calendar is already set up — sync happens automatically, no extra button needed
-                keyboard = InlineKeyboardMarkup([save_skip_row])
+                keyboard = InlineKeyboardMarkup([quadrant_row, save_skip_row])
             else:
                 # No calendar connected — offer both options
                 gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
                 apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
                 keyboard = InlineKeyboardMarkup([
                     [gcal_btn, apple_btn],
+                    quadrant_row,
                     save_skip_row,
                 ])
         card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
@@ -2368,6 +2422,69 @@ async def _cb_conflict(query, context, data: str, chat_id: int, lang: str, user)
     context.user_data.pop(conflict_key, None)
 
 
+async def _cb_quadrant_change(query, context, data: str, chat_id: int, lang: str, user):
+    """Handle qc_<idx>_<Qn> — user manually changed task quadrant in preview card."""
+    parts = data.split("_")
+    if len(parts) != 3:
+        return
+    _, idx_str, new_q = parts
+    if new_q not in QUADRANT_EMOJI:
+        return
+    try:
+        idx_int = int(idx_str)
+    except ValueError:
+        return
+    tasks = context.user_data.get("tasks", [])
+    if idx_int >= len(tasks):
+        await query.answer("Session expired")
+        return
+    task = tasks[idx_int]
+    if task.get("quadrant") == new_q:
+        return  # No change
+    task["quadrant"] = new_q
+    task["quadrant_name"] = QUADRANT_NAMES.get(lang, QUADRANT_NAMES["ru"])[new_q]
+    # Re-render the card
+    emoji = QUADRANT_EMOJI[new_q]
+    time_sep = _TIME_SEP.get(lang, " ")
+    if task.get("suggested_date"):
+        date_display = format_date(task["suggested_date"], lang)
+        date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
+    else:
+        date_line = ""
+    base_text = (
+        f"{emoji} *{task['title']}*\n"
+        f"{new_q} — {task['quadrant_name']}\n"
+        + (date_line + "\n" if date_line else "")
+    )
+    text = base_text + f"_{task.get('reason','')}_"
+    # Rebuild keyboard with updated active marker
+    def _q_label(q):
+        e = QUADRANT_EMOJI[q]
+        return f"• {e} •" if q == new_q else e
+    quadrant_row = [
+        InlineKeyboardButton(_q_label("Q1"), callback_data=f"qc_{idx_int}_Q1"),
+        InlineKeyboardButton(_q_label("Q2"), callback_data=f"qc_{idx_int}_Q2"),
+        InlineKeyboardButton(_q_label("Q3"), callback_data=f"qc_{idx_int}_Q3"),
+        InlineKeyboardButton(_q_label("Q4"), callback_data=f"qc_{idx_int}_Q4"),
+    ]
+    save_skip_row = [
+        InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{idx_int}"),
+        InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{idx_int}"),
+    ]
+    gcal_connected = bool(user and user.get("calendar_connected"))
+    ical_subscribed = bool(user and user.get("ical_token"))
+    if gcal_connected or ical_subscribed:
+        keyboard = InlineKeyboardMarkup([quadrant_row, save_skip_row])
+    else:
+        gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
+        apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{idx_int}")
+        keyboard = InlineKeyboardMarkup([[gcal_btn, apple_btn], quadrant_row, save_skip_row])
+    try:
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"_cb_quadrant_change edit failed: {e}")
+
+
 async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, user):
     action, idx = data.split("_")
     tasks = context.user_data.get("tasks", [])
@@ -2673,6 +2790,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_move_task(query, context, data, chat_id, lang, user)
     if data.startswith("rd_"):
         return await _cb_reminder_action(query, context, data, chat_id, lang, user)
+    if data.startswith("qc_"):
+        return await _cb_quadrant_change(query, context, data, chat_id, lang, user)
     if data in ("deletedata_confirm", "deletedata_cancel"):
         return await _cb_deletedata(query, context, data, chat_id, lang)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
