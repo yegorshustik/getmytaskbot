@@ -42,6 +42,62 @@ from db import (
     find_upcoming_tasks, reschedule_task_in_db,
     get_recurring_tasks_for_today,
 )
+
+
+# ─── Async helpers for blocking I/O ──────────────────────────────────────────
+# These wrap synchronous SQLite and Google Calendar API calls so they don't
+# block the event loop. Used heavily in background jobs.
+
+async def db_fetchall(sql: str, params: tuple = ()) -> list:
+    """Run a SELECT in a thread pool. Returns list of rows."""
+    def _run():
+        conn = sqlite3.connect("users.db")
+        try:
+            return conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+    return await asyncio.to_thread(_run)
+
+
+async def db_fetchone(sql: str, params: tuple = ()):
+    """Run a SELECT, return first row or None."""
+    def _run():
+        conn = sqlite3.connect("users.db")
+        try:
+            return conn.execute(sql, params).fetchone()
+        finally:
+            conn.close()
+    return await asyncio.to_thread(_run)
+
+
+async def db_execute(sql: str, params: tuple = ()) -> None:
+    """Run an INSERT/UPDATE/DELETE in a thread pool."""
+    def _run():
+        conn = sqlite3.connect("users.db")
+        try:
+            conn.execute(sql, params)
+            conn.commit()
+        finally:
+            conn.close()
+    await asyncio.to_thread(_run)
+
+
+async def gcal_call(callable_obj, timeout: float = 15.0):
+    """
+    Run a Google Calendar .execute() call in a thread pool with a timeout.
+    Raises asyncio.TimeoutError if it takes longer than `timeout` seconds.
+    """
+    return await asyncio.wait_for(asyncio.to_thread(callable_obj.execute), timeout=timeout)
+
+
+async def gather_with_concurrency(n: int, *coros):
+    """asyncio.gather with concurrency limit — caps simultaneous coroutines at n."""
+    semaphore = asyncio.Semaphore(n)
+    async def _bound(coro):
+        async with semaphore:
+            return await coro
+    return await asyncio.gather(*[_bound(c) for c in coros], return_exceptions=True)
+
 from calendar_utils import (
     get_calendar_service_for_user, check_conflicts,
     add_to_calendar, add_recurring_to_calendar, describe_recurrence,
@@ -441,248 +497,246 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
 
 # ─── Reminders ────────────────────────────────────────────────────────────────
 
+async def _check_reminders_for_user(chat_id, lang, now, time_min, time_max):
+    """Handle reminders for one user — extracted so we can run users in parallel."""
+    try:
+        service = get_calendar_service_for_user(chat_id)
+        if not service:
+            return
+        try:
+            events_result = await gcal_call(service.events().list(
+                calendarId="primary",
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                orderBy="startTime"
+            ))
+        except asyncio.TimeoutError:
+            logger.warning(f"check_reminders: Google Calendar timeout for {chat_id}")
+            return
+        events = events_result.get("items", [])
+        # Pre-load event IDs already tracked in bot DB — their reminders are handled by check_task_reminders
+        bot_event_rows = await db_fetchall(
+            "SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
+            (chat_id,)
+        )
+        _bot_event_ids = {row[0] for row in bot_event_rows}
+        for event in events:
+            event_id = event["id"]
+            # Skip events already in bot DB — bot's own reminder system handles them
+            if event_id in _bot_event_ids:
+                continue
+            title = event.get("summary", "—")
+            start = event.get("start", {})
+            start_str = start.get("dateTime") or start.get("date")
+            if not start_str or "dateTime" not in start:
+                continue
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            reminders = event.get("reminders", {})
+            overrides = reminders.get("overrides", [])
+            if not overrides and reminders.get("useDefault", True):
+                overrides = [{"method": "popup", "minutes": 30}]
+            for reminder in overrides:
+                minutes_before = reminder.get("minutes", 30)
+                remind_at = start_dt - timedelta(minutes=minutes_before)
+                remind_at_utc = remind_at.astimezone(_utc.utc).replace(tzinfo=None)
+                diff = abs((remind_at_utc - now).total_seconds())
+                if diff <= 150:
+                    remind_key = remind_at_utc.strftime("%Y-%m-%dT%H:%M")
+                    if not reminder_already_sent(chat_id, event_id, remind_key):
+                        eff_lang = lang or "ru"
+                        user_obj = get_user(chat_id)
+                        tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
+                        local_dt = start_dt.astimezone(ZoneInfo(tz_name))
+                        date_part = format_date(local_dt.strftime("%Y-%m-%d"), eff_lang)
+                        time_part = local_dt.strftime("%H:%M")
+                        time_sep = _TIME_SEP.get(eff_lang, " ")
+                        time_str = f"{date_part}{time_sep}{time_part}"
+                        text = TEXTS[eff_lang]["reminder"].format(title=title, time=time_str)
+                        event_link = event.get("htmlLink")
+                        open_labels = {
+                            "ru": "📅 Открыть в Google Календаре",
+                            "en": "📅 Open in Google Calendar",
+                            "uk": "📅 Відкрити в Google Календарі",
+                        }
+                        # Check if this is a recurring event instance
+                        master_event_id = event.get("recurringEventId")
+                        recurring_row = None
+                        if master_event_id:
+                            recurring_row = await db_fetchone(
+                                "SELECT id FROM recurring_tasks WHERE chat_id=? AND google_event_id=?",
+                                (chat_id, master_event_id)
+                            )
+                        t_lang = TEXTS[eff_lang]
+                        if recurring_row:
+                            rid = recurring_row[0]
+                            btn_rows = []
+                            if event_link:
+                                btn_rows.append([InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)])
+                            btn_rows.append([
+                                InlineKeyboardButton(t_lang["btn_recur_continue"], callback_data=f"recur_continue_{rid}"),
+                                InlineKeyboardButton(t_lang["btn_recur_delete"], callback_data=f"recur_delete_{rid}"),
+                            ])
+                            markup = InlineKeyboardMarkup(btn_rows)
+                        else:
+                            markup = InlineKeyboardMarkup([[
+                                InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)
+                            ]]) if event_link else None
+                        await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
+                        mark_reminder_sent(chat_id, event_id, remind_key)
+    except Exception as e:
+        logger.error(f"Reminder error for {chat_id}: {e}")
+
+
 async def check_reminders():
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT chat_id, lang, calendar_token FROM users WHERE calendar_connected = 1")
-    users = c.fetchall()
-    conn.close()
+    """Top-level reminder job — runs every 5 min, fans out per-user work in parallel."""
+    rows = await db_fetchall("SELECT chat_id, lang, calendar_token FROM users WHERE calendar_connected = 1")
     now = datetime.utcnow()
     time_min = now.isoformat() + "Z"
     time_max = (now + timedelta(hours=24)).isoformat() + "Z"
-    for chat_id, lang, token in users:
+    coros = [_check_reminders_for_user(chat_id, lang, now, time_min, time_max)
+             for chat_id, lang, token in rows]
+    if coros:
+        await gather_with_concurrency(5, *coros)
+
+
+async def _sync_calendar_for_user(chat_id, lang, now, time_min, time_max):
+    """Sync calendar for one user — extracted for parallel execution."""
+    try:
+        service = get_calendar_service_for_user(chat_id)
+        if not service:
+            return
+        lang = lang or "ru"
+        user_obj = get_user(chat_id)
+        tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
+
+        # ── Fetch events from Google Calendar (with timeout) ───────────
         try:
-            service = get_calendar_service_for_user(chat_id)
-            if not service:
-                continue
-            events_result = service.events().list(
+            result = await gcal_call(service.events().list(
                 calendarId="primary",
                 timeMin=time_min,
                 timeMax=time_max,
                 singleEvents=True,
                 orderBy="startTime"
-            ).execute()
-            events = events_result.get("items", [])
-            # Pre-load event IDs already tracked in bot DB — their reminders are handled by check_task_reminders
-            _db = sqlite3.connect("users.db")
-            _bot_event_ids = {
-                row[0] for row in
-                _db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0", (chat_id,)).fetchall()
-            }
-            _db.close()
-            for event in events:
-                event_id = event["id"]
-                # Skip events already in bot DB — bot's own reminder system handles them
-                if event_id in _bot_event_ids:
-                    continue
-                title = event.get("summary", "—")
-                start = event.get("start", {})
-                start_str = start.get("dateTime") or start.get("date")
-                if not start_str or "dateTime" not in start:
-                    continue
+            ))
+        except asyncio.TimeoutError:
+            logger.warning(f"sync_calendar: Google Calendar timeout for {chat_id}")
+            return
+        cal_events = result.get("items", [])
+        cal_event_ids = {e["id"] for e in cal_events}
+
+        # Dedup by google_event_id
+        existing_id_rows = await db_fetchall(
+            "SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL",
+            (chat_id,)
+        )
+        existing_ids = {row[0] for row in existing_id_rows}
+        # Dedup by (title, date, time)
+        existing_key_rows = await db_fetchall(
+            "SELECT title, suggested_date, suggested_time FROM tasks WHERE chat_id=?",
+            (chat_id,)
+        )
+        existing_keys = {(row[0], row[1], row[2]) for row in existing_key_rows}
+
+        for event in cal_events:
+            event_id = event["id"]
+            if event_id in existing_ids:
+                continue
+            title = event.get("summary", "—")
+            start = event.get("start", {})
+            if "dateTime" in start:
+                dt = datetime.fromisoformat(start["dateTime"])
+                suggested_date = dt.strftime("%Y-%m-%d")
+                suggested_time = dt.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
+            else:
+                suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
+                suggested_time = None
+
+            event_url = (
+                event.get("hangoutLink")
+                or next((ep.get("uri") for ep in
+                         event.get("conferenceData", {}).get("entryPoints", [])
+                         if ep.get("uri", "").startswith("http")), None)
+                or (event.get("location", "") if event.get("location", "").startswith("http") else None)
+                or extract_url(event.get("description", ""))
+            )
+
+            task_key = (title, suggested_date, suggested_time)
+            if task_key in existing_keys:
+                await db_execute(
+                    "UPDATE tasks SET google_event_id=?, synced_to_calendar=1, task_url=COALESCE(task_url, ?) WHERE chat_id=? AND title=? AND suggested_date=? AND suggested_time IS ? AND google_event_id IS NULL",
+                    (event_id, event_url, chat_id, title, suggested_date, suggested_time)
+                )
+                continue
+
+            await db_execute(
+                "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url) VALUES (?,?,?,?,?,?,?,0,1,?,?)",
+                (chat_id, title, event.get("description", ""), "", "", suggested_date, suggested_time, event_id, event_url)
+            )
+
+            date_display = format_date(suggested_date, lang)
+            time_sep = _TIME_SEP.get(lang, " ")
+            date_str = date_display + (f"{time_sep}{suggested_time}" if suggested_time else "")
+            await bot_app.bot.send_message(
+                chat_id=chat_id,
+                text=TEXTS[lang]["cal_sync_new"].format(emoji="📌", title=title, date=date_str),
+                parse_mode="Markdown"
+            )
+
+        # ── Remove tasks whose Calendar event was deleted ──────────────
+        tracked = await db_fetchall(
+            "SELECT id, title, google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
+            (chat_id,)
+        )
+        for task_id, title, event_id in tracked:
+            if event_id not in cal_event_ids:
                 try:
-                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError):
-                    continue
-                reminders = event.get("reminders", {})
-                overrides = reminders.get("overrides", [])
-                if not overrides and reminders.get("useDefault", True):
-                    overrides = [{"method": "popup", "minutes": 30}]
-                for reminder in overrides:
-                    minutes_before = reminder.get("minutes", 30)
-                    remind_at = start_dt - timedelta(minutes=minutes_before)
-                    remind_at_utc = remind_at.astimezone(_utc.utc).replace(tzinfo=None)
-                    diff = abs((remind_at_utc - now).total_seconds())
-                    if diff <= 150:
-                        remind_key = remind_at_utc.strftime("%Y-%m-%dT%H:%M")
-                        if not reminder_already_sent(chat_id, event_id, remind_key):
-                            eff_lang = lang or "ru"
-                            user_obj = get_user(chat_id)
-                            tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
-                            local_dt = start_dt.astimezone(ZoneInfo(tz_name))
-                            date_part = format_date(local_dt.strftime("%Y-%m-%d"), eff_lang)
-                            time_part = local_dt.strftime("%H:%M")
-                            time_sep = _TIME_SEP.get(eff_lang, " ")
-                            time_str = f"{date_part}{time_sep}{time_part}"
-                            text = TEXTS[eff_lang]["reminder"].format(title=title, time=time_str)
-                            event_link = event.get("htmlLink")
-                            open_labels = {
-                                "ru": "📅 Открыть в Google Календаре",
-                                "en": "📅 Open in Google Calendar",
-                                "uk": "📅 Відкрити в Google Календарі",
-                            }
-                            # Check if this is a recurring event instance
-                            master_event_id = event.get("recurringEventId")
-                            recurring_row = None
-                            if master_event_id:
-                                rc = sqlite3.connect("users.db")
-                                recurring_row = rc.execute(
-                                    "SELECT id FROM recurring_tasks WHERE chat_id=? AND google_event_id=?",
-                                    (chat_id, master_event_id)
-                                ).fetchone()
-                                rc.close()
-                            t_lang = TEXTS[eff_lang]
-                            if recurring_row:
-                                rid = recurring_row[0]
-                                btn_rows = []
-                                if event_link:
-                                    btn_rows.append([InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)])
-                                btn_rows.append([
-                                    InlineKeyboardButton(t_lang["btn_recur_continue"], callback_data=f"recur_continue_{rid}"),
-                                    InlineKeyboardButton(t_lang["btn_recur_delete"], callback_data=f"recur_delete_{rid}"),
-                                ])
-                                markup = InlineKeyboardMarkup(btn_rows)
-                            else:
-                                markup = InlineKeyboardMarkup([[
-                                    InlineKeyboardButton(open_labels.get(eff_lang, open_labels["ru"]), url=event_link)
-                                ]]) if event_link else None
-                            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
-                            mark_reminder_sent(chat_id, event_id, remind_key)
-        except Exception as e:
-            logger.error(f"Reminder error for {chat_id}: {e}")
+                    await gcal_call(service.events().get(calendarId="primary", eventId=event_id), timeout=10)
+                    # Still exists outside the window — skip
+                except (asyncio.TimeoutError, Exception):
+                    # 404 or gone — delete from bot DB
+                    await db_execute("DELETE FROM tasks WHERE id=?", (task_id,))
+                    await bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        text=TEXTS[lang]["cal_sync_removed"].format(title=title),
+                        parse_mode="Markdown"
+                    )
+    except Exception as e:
+        logger.error(f"Calendar sync error for {chat_id}: {e}")
+
 
 async def sync_calendar_events():
     """Sync Google Calendar events (next 24 h) to bot tasks DB every 15 min."""
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT chat_id, lang FROM users WHERE calendar_connected = 1 AND lang IS NOT NULL")
-    users = c.fetchall()
-    conn.close()
-
+    rows = await db_fetchall(
+        "SELECT chat_id, lang FROM users WHERE calendar_connected = 1 AND lang IS NOT NULL"
+    )
     now = datetime.utcnow()
     time_min = now.isoformat() + "Z"
     time_max = (now + timedelta(days=1)).isoformat() + "Z"
-
-    for chat_id, lang in users:
-        try:
-            service = get_calendar_service_for_user(chat_id)
-            if not service:
-                continue
-            lang = lang or "ru"
-            user_obj = get_user(chat_id)
-            tz_name = user_obj["timezone"] if user_obj else "Europe/Moscow"
-
-            # ── Fetch events from Google Calendar ──────────────────────────
-            result = service.events().list(
-                calendarId="primary",
-                timeMin=time_min,
-                timeMax=time_max,
-                singleEvents=True,
-                orderBy="startTime"
-            ).execute()
-            cal_events = result.get("items", [])
-            cal_event_ids = {e["id"] for e in cal_events}
-
-            # ── Add new events not yet in bot DB ───────────────────────────
-            with sqlite3.connect("users.db") as db:
-                # Dedup by google_event_id
-                existing_ids = {
-                    row[0] for row in
-                    db.execute("SELECT google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL", (chat_id,)).fetchall()
-                }
-                # Dedup by (title, date, time) — catches tasks created via bot that are also in Calendar
-                existing_keys = {
-                    (row[0], row[1], row[2]) for row in
-                    db.execute("SELECT title, suggested_date, suggested_time FROM tasks WHERE chat_id=?", (chat_id,)).fetchall()
-                }
-
-                for event in cal_events:
-                    event_id = event["id"]
-                    if event_id in existing_ids:
-                        continue
-                    title = event.get("summary", "—")
-                    start = event.get("start", {})
-                    if "dateTime" in start:
-                        dt = datetime.fromisoformat(start["dateTime"])
-                        suggested_date = dt.strftime("%Y-%m-%d")
-                        suggested_time = dt.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
-                    else:
-                        suggested_date = start.get("date", now.strftime("%Y-%m-%d"))
-                        suggested_time = None
-
-                    # Extract URL from event: hangoutLink > conferenceData > location > description
-                    event_url = (
-                        event.get("hangoutLink")
-                        or next((ep.get("uri") for ep in
-                                 event.get("conferenceData", {}).get("entryPoints", [])
-                                 if ep.get("uri", "").startswith("http")), None)
-                        or (event.get("location", "") if event.get("location", "").startswith("http") else None)
-                        or extract_url(event.get("description", ""))
-                    )
-
-                    # If a task with same title+date+time already exists — just link it to Calendar, don't create duplicate
-                    task_key = (title, suggested_date, suggested_time)
-                    if task_key in existing_keys:
-                        db.execute(
-                            "UPDATE tasks SET google_event_id=?, synced_to_calendar=1, task_url=COALESCE(task_url, ?) WHERE chat_id=? AND title=? AND suggested_date=? AND suggested_time IS ? AND google_event_id IS NULL",
-                            (event_id, event_url, chat_id, title, suggested_date, suggested_time)
-                        )
-                        db.commit()
-                        continue
-
-                    db.execute(
-                        "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, suggested_time, done, synced_to_calendar, google_event_id, task_url) VALUES (?,?,?,?,?,?,?,0,1,?,?)",
-                        (chat_id, title, event.get("description", ""), "", "", suggested_date, suggested_time, event_id, event_url)
-                    )
-                    db.commit()
-
-                    date_display = format_date(suggested_date, lang)
-                    time_sep = _TIME_SEP.get(lang, " ")
-                    date_str = date_display + (f"{time_sep}{suggested_time}" if suggested_time else "")
-                    await bot_app.bot.send_message(
-                        chat_id=chat_id,
-                        text=TEXTS[lang]["cal_sync_new"].format(emoji="📌", title=title, date=date_str),
-                        parse_mode="Markdown"
-                    )
-
-                # ── Remove tasks whose Calendar event was deleted ──────────────
-                tracked = db.execute(
-                    "SELECT id, title, google_event_id FROM tasks WHERE chat_id=? AND google_event_id IS NOT NULL AND done=0",
-                    (chat_id,)
-                ).fetchall()
-
-                for task_id, title, event_id in tracked:
-                    if event_id not in cal_event_ids:
-                        # Check if it's truly gone (event might be outside 24h window but still future)
-                        try:
-                            service.events().get(calendarId="primary", eventId=event_id).execute()
-                            # Still exists (just outside 3-day window) — skip
-                        except Exception:
-                            # 404 or gone — delete from bot DB
-                            db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-                            db.commit()
-                            await bot_app.bot.send_message(
-                                chat_id=chat_id,
-                                text=TEXTS[lang]["cal_sync_removed"].format(title=title),
-                                parse_mode="Markdown"
-                            )
-
-        except Exception as e:
-            logger.error(f"Calendar sync error for {chat_id}: {e}")
+    coros = [_sync_calendar_for_user(chat_id, lang, now, time_min, time_max)
+             for chat_id, lang in rows]
+    if coros:
+        await gather_with_concurrency(5, *coros)
 
 async def check_task_reminders():
-    conn = sqlite3.connect("users.db")
-    users = conn.execute(
+    users = await db_fetchall(
         "SELECT chat_id, lang, timezone, reminder_minutes FROM users WHERE reminder_minutes > 0 AND lang IS NOT NULL"
-    ).fetchall()
-    for chat_id, lang, tz_name, reminder_minutes in users:
+    )
+
+    async def _user_task_reminders(chat_id, lang, tz_name, reminder_minutes):
         try:
             tz = ZoneInfo(tz_name or "Europe/Moscow")
             now = datetime.now(tz)
-            lang = lang or "ru"
-
-            # Find tasks where the reminder window has opened:
-            #   task_time - reminder_minutes <= now  →  task_time <= now + reminder_minutes
-            # AND task hasn't happened yet (with 5-min grace for tasks just passed):
-            #   task_time >= now - 5min
-            # This range approach avoids missing tasks due to scheduler timing / exact-minute mismatch.
+            lang_eff = lang or "ru"
             lo = now - timedelta(minutes=5)
             hi = now + timedelta(minutes=reminder_minutes)
-
             lo_date, lo_time = lo.strftime("%Y-%m-%d"), lo.strftime("%H:%M")
             hi_date, hi_time = hi.strftime("%Y-%m-%d"), hi.strftime("%H:%M")
 
-            tasks = conn.execute(
+            tasks = await db_fetchall(
                 """SELECT id, title, suggested_date, suggested_time, task_url FROM tasks
                    WHERE chat_id=?
                    AND suggested_time IS NOT NULL
@@ -690,15 +744,14 @@ async def check_task_reminders():
                    AND (suggested_date > ? OR (suggested_date = ? AND suggested_time >= ?))
                    AND (suggested_date < ? OR (suggested_date = ? AND suggested_time <= ?))""",
                 (chat_id, lo_date, lo_date, lo_time, hi_date, hi_date, hi_time)
-            ).fetchall()
-
+            )
             for task_id, title, date, time, task_url in tasks:
                 remind_key = f"task_{task_id}"
                 sent_key = f"{date}T{time}"
                 if reminder_already_sent(chat_id, remind_key, sent_key):
                     continue
                 title_fmt = fmt_title(title, task_url)
-                t = TEXTS[lang]
+                t = TEXTS[lang_eff]
                 reminder_kb = InlineKeyboardMarkup([[
                     InlineKeyboardButton(t["btn_reminder_done"], callback_data=f"rd_done_{task_id}"),
                     InlineKeyboardButton(t["btn_reminder_reschedule"], callback_data=f"rd_mv_{task_id}"),
@@ -712,16 +765,18 @@ async def check_task_reminders():
                 mark_reminder_sent(chat_id, remind_key, sent_key)
         except Exception as e:
             logger.error(f"Task reminder error for {chat_id}: {e}")
-    conn.close()
+
+    coros = [_user_task_reminders(*row) for row in users]
+    if coros:
+        await gather_with_concurrency(10, *coros)
 
 # Morning digest deduplication stored in DB via sent_reminders table
 _MORNING_DIGEST_EVENT_ID = "__morning_digest__"
 
 async def send_morning_digests():
-    conn = sqlite3.connect("users.db")
-    users = conn.execute("SELECT chat_id, lang, timezone, reminder_time, reminder_enabled FROM users WHERE reminder_enabled=1 AND lang IS NOT NULL").fetchall()
-    conn.close()
-    for chat_id, lang, tz_name, reminder_time, reminder_enabled in users:
+    users = await db_fetchall("SELECT chat_id, lang, timezone, reminder_time, reminder_enabled FROM users WHERE reminder_enabled=1 AND lang IS NOT NULL")
+
+    async def _user_digest(chat_id, lang, tz_name, reminder_time, reminder_enabled):
         try:
             tz = ZoneInfo(tz_name or "Europe/Moscow")
             now = datetime.now(tz)
@@ -729,12 +784,12 @@ async def send_morning_digests():
             current_time = now.strftime("%H:%M")
             rtime = reminder_time or "08:00"
             if current_time != rtime:
-                continue
+                return
             if reminder_already_sent(chat_id, _MORNING_DIGEST_EVENT_ID, today):
-                continue
+                return
             mark_reminder_sent(chat_id, _MORNING_DIGEST_EVENT_ID, today)
-            lang = lang or "ru"
-            t = TEXTS[lang]
+            lang_eff = lang or "ru"
+            t = TEXTS[lang_eff]
             tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
             _birthday_kw = ("день рождения", "birthday", "народження", "день народження")
             def _is_bday(title): return any(kw in title.lower() for kw in _birthday_kw)
@@ -744,18 +799,16 @@ async def send_morning_digests():
                         return title[:-len(suffix)].strip(" –")
                 return title
 
-            db = sqlite3.connect("users.db")
-            # All tasks today (timed + untimed)
-            today_rows = db.execute(
+            today_rows = await db_fetchall(
                 "SELECT title, suggested_time, task_url FROM tasks WHERE chat_id=? AND suggested_date=? AND done=0 ORDER BY suggested_time ASC NULLS LAST, id ASC",
                 (chat_id, today)
-            ).fetchall()
-            # Future tasks (next 7 days, untimed only — timed ones get separate reminders)
-            future_rows = db.execute(
-                "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND suggested_date<=date(?,'+7 days') AND done=0 AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 7",
-                (chat_id, today, today)
-            ).fetchall() if not today_rows else []
-            db.close()
+            )
+            future_rows = []
+            if not today_rows:
+                future_rows = await db_fetchall(
+                    "SELECT title, suggested_date, task_url FROM tasks WHERE chat_id=? AND suggested_date>? AND suggested_date<=date(?,'+7 days') AND done=0 AND (suggested_time IS NULL OR suggested_time='') ORDER BY suggested_date ASC LIMIT 7",
+                    (chat_id, today, today)
+                )
             # Merge recurring tasks for today (those not already present by title)
             existing_titles = {r[0].lower() for r in today_rows}
             recurring_today = get_recurring_tasks_for_today(chat_id, today)
@@ -783,13 +836,13 @@ async def send_morning_digests():
                     regular_f = [(ti, d, u) for ti, d, u in rows_future if not _is_bday(ti)]
                     if regular_f:
                         for title, date, url in regular_f:
-                            rel = format_date_relative(date, today, tomorrow, lang)
+                            rel = format_date_relative(date, today, tomorrow, lang_eff)
                             lines.append(f"• {fmt_title(title, url)} — {rel}")
                     if bdays_f:
                         lines.append("")
                         lines.append(f"🎂 *{t['tasks_birthdays']}:*")
                         for title, date, _ in bdays_f:
-                            rel = format_date_relative(date, today, tomorrow, lang)
+                            rel = format_date_relative(date, today, tomorrow, lang_eff)
                             lines.append(f"• {_strip_bday(title)} — {rel}")
                 return "\n".join(lines)
 
@@ -814,6 +867,10 @@ async def send_morning_digests():
             await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=markup)
         except Exception as e:
             logger.error(f"Morning digest error for {chat_id}: {e}")
+
+    coros = [_user_digest(*row) for row in users]
+    if coros:
+        await gather_with_concurrency(10, *coros)
 
 # ─── Weekly digest ────────────────────────────────────────────────────────────
 
