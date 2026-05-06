@@ -2243,6 +2243,20 @@ async def _cb_settings(query, context, data: str, chat_id: int, lang: str, user)
         await query.edit_message_reply_markup(reply_markup=None)
         await timezone_command_for_query(query, chat_id, lang)
         return
+    if data == "settings_lang":
+        await query.edit_message_reply_markup(reply_markup=None)
+        prompts = {
+            "ru": "Выбери язык:",
+            "en": "Choose your language:",
+            "uk": "Обери мову:",
+        }
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru")],
+            [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+            [InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk")],
+        ])
+        await query.message.reply_text(prompts.get(lang, prompts["en"]), reply_markup=kb)
+        return
     if data == "settings_reminder_before":
         await query.edit_message_reply_markup(reply_markup=None)
         minutes = user["reminder_minutes"] if user else 30
@@ -3807,6 +3821,8 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard_rows.append([InlineKeyboardButton(t["btn_connect"], callback_data="settings_cal_choose")])
     current_tz = user["timezone"] if user else "Europe/Moscow"
     keyboard_rows.append([InlineKeyboardButton(f"🕐 {current_tz}", callback_data="settings_timezone")])
+    lang_flags = {"ru": "🇷🇺 Русский", "en": "🇬🇧 English", "uk": "🇺🇦 Українська"}
+    keyboard_rows.append([InlineKeyboardButton(lang_flags.get(lang, "🌐 Language"), callback_data="settings_lang")])
     keyboard_rows.append([InlineKeyboardButton(t["btn_feedback"], callback_data="settings_feedback")])
     keyboard_rows.append([InlineKeyboardButton(t["btn_help"], callback_data="settings_help")])
     await update.message.reply_text(t["btn_settings"], reply_markup=InlineKeyboardMarkup(keyboard_rows))
