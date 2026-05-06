@@ -704,6 +704,7 @@ _C = {
             ("🎯", "Цели (SMART)", "Ставь цели с дедлайном и критериями, связывай с задачами, отслеживай прогресс"),
             ("🔁", "Повторяющиеся задачи", "Ежедневные и еженедельные задачи из Google Calendar в утреннем дайджесте"),
             ("📅", "Перенос задач", "Перенеси задачу голосом или текстом — бот найдёт её и обновит в Calendar"),
+            ("📝", "Чек-листы", "Надиктуй список покупок или дел — бот разобьёт на пункты, отмечай выполненные одним тапом"),
             ("🌐", "Три языка", "Русский, английский, украинский — бот отвечает на твоём языке"),
         ],
 
@@ -725,6 +726,8 @@ _C = {
              "Каждое утро бот присылает дайджест — список всех задач на сегодня с временем и приоритетами. За 30 минут до начала задачи приходит напоминание прямо в Telegram. Можно отметить выполненным или перенести одним нажатием — не выходя из чата."),
             ("Можно ли поставить цель и разбить её на задачи в боте?",
              "Да. В Get My Task есть отдельный режим целей: задаёшь цель с дедлайном и критерием успеха — например «Запустить сайт до 1 июня». Затем добавляешь связанные задачи. Бот показывает прогресс и уведомляет, когда все задачи по цели выполнены."),
+            ("Можно ли вести список покупок или дел в боте?",
+             "Да, для этого есть чек-листы. Команда /checklist открывает раздел — надиктуй или напиши список («молоко, хлеб, сыр»), бот разобьёт его на отдельные пункты. Тапаешь по пункту — он отмечается как выполненный и уезжает вниз. Можно держать несколько чек-листов одновременно: покупки, дела, к поездке."),
             ("Get My Task синхронизируется с Google и Apple Calendar?",
              "Да. В настройках бота выбери Google или Apple Calendar — подключение занимает 30 секунд. Любую задачу с датой и временем можно добавить в календарь одним нажатием. Если перенести задачу командой боту, дата в Google Calendar обновится автоматически. Apple Calendar поддерживает живую подписку — задачи появляются сами, раз в час."),
             ("Как работает приоритизация задач по матрице Эйзенхауэра?",
@@ -770,7 +773,7 @@ _C = {
 
         "free_title": "Полностью бесплатно",
         "free_desc": "Все функции доступны без оплаты и без лимитов",
-        "free_features": ["Голосовой ввод", "Матрица Эйзенхауэра", "Google & Apple Calendar", "SMART-цели", "Напоминания", "Утренний дайджест"],
+        "free_features": ["Голосовой ввод", "Матрица Эйзенхауэра", "Google & Apple Calendar", "SMART-цели", "Чек-листы", "Напоминания", "Утренний дайджест"],
 
         "footer_bot": "Открыть бота",
     },
@@ -806,6 +809,7 @@ _C = {
             ("🎯", "SMART Goals", "Set goals with deadlines and criteria, link tasks to them, track progress"),
             ("🔁", "Recurring tasks", "Daily and weekly tasks from Google Calendar appear in your morning digest"),
             ("📅", "Reschedule tasks", "Move a task by voice or text — the bot finds it and updates it in Calendar"),
+            ("📝", "Checklists", "Dictate a shopping or to-do list — the bot splits it into items, tap to mark done"),
             ("🌐", "Three languages", "Russian, English, Ukrainian — the bot replies in your language"),
         ],
 
@@ -825,6 +829,8 @@ _C = {
              "Send a voice message to @getmytask_bot — for example: 'Call Max on Friday at 11am and submit the report by Monday.' Whisper AI transcribes your message, splits it into individual tasks, detects dates, and assigns a priority quadrant. No manual input needed."),
             ("How does Get My Task help me remember important things?",
              "Every morning the bot sends a digest — all of today's tasks with times and priorities. Before each task starts, you get a reminder right in Telegram. You can mark it done or reschedule with one tap, without leaving the chat."),
+            ("Can I keep a shopping or to-do checklist in the bot?",
+             "Yes — there's a dedicated checklists section. The /checklist command opens it. Dictate or type a list (\"milk, bread, cheese\") and the bot splits it into separate items. Tap an item to mark it done — it moves to the bottom. You can keep multiple checklists in parallel: groceries, errands, trip prep."),
             ("Can I set a goal and break it down into tasks?",
              "Yes. Get My Task has a dedicated goals mode: set a goal with a deadline and success criteria — e.g. 'Launch the website by June 1.' Then add linked tasks. The bot tracks progress and notifies you when all tasks under a goal are completed."),
             ("Does Get My Task sync with Google and Apple Calendar?",
@@ -872,7 +878,7 @@ _C = {
 
         "free_title": "Completely free",
         "free_desc": "All features available with no payment and no limits",
-        "free_features": ["Voice input", "Eisenhower Matrix", "Google & Apple Calendar", "SMART Goals", "Reminders", "Morning digest"],
+        "free_features": ["Voice input", "Eisenhower Matrix", "Google & Apple Calendar", "SMART Goals", "Checklists", "Reminders", "Morning digest"],
 
         "footer_bot": "Open bot",
     },
@@ -908,6 +914,7 @@ _C = {
             ("🎯", "Цілі (SMART)", "Став цілі з дедлайном і критеріями, пов'язуй із задачами, відстежуй прогрес"),
             ("🔁", "Повторювані задачі", "Щоденні та щотижневі задачі з Google Calendar у ранковому дайджесті"),
             ("📅", "Перенесення задач", "Перенеси задачу голосом або текстом — бот знайде її й оновить у Calendar"),
+            ("📝", "Чек-листи", "Надиктуй список покупок або справ — бот розіб'є на пункти, відзначай виконані одним тапом"),
             ("🌐", "Три мови", "Російська, англійська, українська — бот відповідає твоєю мовою"),
         ],
 
@@ -927,6 +934,8 @@ _C = {
              "Відправ голосове повідомлення боту @getmytask_bot — наприклад: «Зателефонувати Максиму в п'ятницю о 11:00 і здати звіт до понеділка». Whisper AI розпізнає мовлення, розбере кожну задачу окремо, визначить дати й призначить пріоритетний квадрант. Жодної ручної роботи."),
             ("Як Get My Task допомагає не забувати про важливі справи?",
              "Щоранку бот надсилає дайджест — список усіх задач на сьогодні з часом і пріоритетами. За 30 хвилин до початку задачі приходить нагадування прямо в Telegram. Можна відмітити виконаним або перенести одним натисканням, не виходячи з чату."),
+            ("Чи можна вести список покупок або справ у боті?",
+             "Так, для цього є чек-листи. Команда /checklist відкриває розділ — надиктуй або напиши список («молоко, хліб, сир»), бот розіб'є його на окремі пункти. Тапаєш по пункту — він відзначається як виконаний і їде вниз. Можна вести кілька чек-листів одночасно: покупки, справи, до поїздки."),
             ("Чи можна поставити ціль і розбити її на задачі у боті?",
              "Так. У Get My Task є окремий режим цілей: задаєш ціль із дедлайном і критерієм успіху — наприклад «Запустити сайт до 1 червня». Потім додаєш пов'язані задачі. Бот показує прогрес і сповіщає, коли всі задачі по цілі виконані."),
             ("Get My Task синхронізується з Google і Apple Calendar?",
@@ -974,7 +983,7 @@ _C = {
 
         "free_title": "Повністю безкоштовно",
         "free_desc": "Всі функції доступні без оплати та без лімітів",
-        "free_features": ["Голосовий ввід", "Матриця Ейзенхауера", "Google & Apple Calendar", "SMART-цілі", "Нагадування", "Ранковий дайджест"],
+        "free_features": ["Голосовий ввід", "Матриця Ейзенхауера", "Google & Apple Calendar", "SMART-цілі", "Чек-листи", "Нагадування", "Ранковий дайджест"],
 
         "footer_bot": "Відкрити бота",
     },
