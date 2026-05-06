@@ -251,6 +251,21 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 ВАЖНО про длительность: если пользователь явно указал продолжительность ("на час", "на 45 минут", "с 14:00 до 16:00", "2 часа") — добавь поле duration_minutes (целое число). Если длительность не указана — не включай поле duration_minutes.
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
 Если в тексте есть URL (ссылка на Zoom, Meet, сайт и т.д.) — добавь поле url с этой ссылкой. Иначе не включай поле url.
+
+ПРИМЕРЫ (вход → выход):
+
+Вход: "позвонить Пете завтра в 3"
+Выход: [{{"title":"Позвонить Пете","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":"<завтра>","suggested_time":"15:00","reason":"Вы упомянули звонок Пете завтра в 15:00","description":""}}]
+
+Вход: "так, надо завтра позвонить Пете, потом не забыть забрать химчистку, а в субботу в 11 встреча с Колей на час про проект"
+Выход: [{{"title":"Позвонить Пете","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":"<завтра>","suggested_time":null,"reason":"Вы упомянули звонок Пете завтра","description":""}},{{"title":"Забрать химчистку","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":null,"suggested_time":null,"reason":"Вы упомянули, что нужно забрать химчистку","description":""}},{{"title":"Встреча с Колей про проект","quadrant":"Q2","quadrant_name":"Важно, не срочно","suggested_date":"<суббота>","suggested_time":"11:00","duration_minutes":60,"reason":"Вы запланировали встречу с Колей в субботу в 11:00 на час","description":""}}]
+
+Вход: "купить молоко хлеб и сыр"
+Выход: [{{"title":"Купить молоко, хлеб и сыр","quadrant":"Q3","quadrant_name":"Срочно, не важно","suggested_date":null,"suggested_time":null,"reason":"Вы перечислили продукты, которые нужно купить","description":""}}]
+
+Вход: "каждый понедельник и среду в 7 утра тренировка"
+Выход: [{{"title":"Тренировка","quadrant":"Q2","quadrant_name":"Важно, не срочно","suggested_date":"<ближайший пн или ср>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"Вы указали регулярные тренировки по понедельникам и средам в 7:00","description":""}}]
+
 Верни ТОЛЬКО валидный JSON массив. Без пояснений.""",
         "en": f"""You are a task management assistant. Current time is {today} {current_time} (timezone {tz_name}). Extract all tasks from the text and classify them using the Eisenhower Matrix.
 For each task return JSON with fields: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (in English), suggested_date (YYYY-MM-DD), suggested_time (HH:MM if a time or relative time like "in 15 minutes" is specified — calculate from {current_time}, otherwise null), reason (in English, write in second person: "You specified...", "You mentioned..." etc).
@@ -261,6 +276,21 @@ IMPORTANT about suggested_time: (1) Always put time in suggested_time field (HH:
 IMPORTANT about duration: if the user explicitly states a duration ("for an hour", "45 minutes", "from 2pm to 4pm", "2 hours") — add field duration_minutes (integer). If no duration is stated — do not include duration_minutes.
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
 If the text contains a URL (Zoom, Meet, website link, etc.) — add a url field with that link. Otherwise don't include the url field.
+
+EXAMPLES (input → output):
+
+Input: "call Pete tomorrow at 3pm"
+Output: [{{"title":"Call Pete","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":"<tomorrow>","suggested_time":"15:00","reason":"You mentioned a call with Pete tomorrow at 3pm","description":""}}]
+
+Input: "ok so I need to call Pete tomorrow, also pick up the dry cleaning, and on Saturday at 11 meet Kolya for an hour about the project"
+Output: [{{"title":"Call Pete","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":"<tomorrow>","suggested_time":null,"reason":"You mentioned calling Pete tomorrow","description":""}},{{"title":"Pick up dry cleaning","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":null,"suggested_time":null,"reason":"You mentioned picking up the dry cleaning","description":""}},{{"title":"Meet Kolya about the project","quadrant":"Q2","quadrant_name":"Important, not urgent","suggested_date":"<saturday>","suggested_time":"11:00","duration_minutes":60,"reason":"You scheduled a meeting with Kolya on Saturday at 11:00 for an hour","description":""}}]
+
+Input: "buy milk bread and cheese"
+Output: [{{"title":"Buy milk, bread and cheese","quadrant":"Q3","quadrant_name":"Urgent, not important","suggested_date":null,"suggested_time":null,"reason":"You listed groceries to buy","description":""}}]
+
+Input: "every monday and wednesday at 7am workout"
+Output: [{{"title":"Workout","quadrant":"Q2","quadrant_name":"Important, not urgent","suggested_date":"<nearest mon or wed>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"You set up regular workouts on Mondays and Wednesdays at 7:00","description":""}}]
+
 Return ONLY a valid JSON array. No explanations.""",
         "uk": f"""Ти — асистент з управління задачами. Зараз {today} {current_time} (часовий пояс {tz_name}). З тексту витягни всі задачі та класифікуй за матрицею Ейзенхауера.
 Для кожної задачі поверни JSON з полями: title, description, quadrant (Q1/Q2/Q3/Q4), quadrant_name (українською), suggested_date (YYYY-MM-DD), suggested_time (HH:MM якщо вказано час або відносний час на кшталт "через 15 хвилин" — рахуй від {current_time}, інакше null), reason (українською, пиши від другої особи: "Ви вказали...", "Ви згадали..." тощо).
@@ -271,6 +301,21 @@ Return ONLY a valid JSON array. No explanations.""",
 ВАЖЛИВО про тривалість: якщо користувач явно вказав тривалість ("на годину", "на 45 хвилин", "з 14:00 до 16:00", "2 години") — додай поле duration_minutes (ціле число). Якщо тривалість не вказана — не включай поле duration_minutes.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
 Якщо в тексті є URL (посилання на Zoom, Meet, сайт тощо) — додай поле url з цим посиланням. Інакше не включай поле url.
+
+ПРИКЛАДИ (вхід → вихід):
+
+Вхід: "подзвонити Петі завтра о 3"
+Вихід: [{{"title":"Подзвонити Петі","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":"<завтра>","suggested_time":"15:00","reason":"Ви згадали дзвінок Петі завтра о 15:00","description":""}}]
+
+Вхід: "так, треба завтра подзвонити Петі, потім не забути забрати хімчистку, а в суботу об 11 зустріч з Колею на годину про проект"
+Вихід: [{{"title":"Подзвонити Петі","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":"<завтра>","suggested_time":null,"reason":"Ви згадали дзвінок Петі завтра","description":""}},{{"title":"Забрати хімчистку","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":null,"suggested_time":null,"reason":"Ви згадали, що треба забрати хімчистку","description":""}},{{"title":"Зустріч з Колею про проект","quadrant":"Q2","quadrant_name":"Важливо, не терміново","suggested_date":"<субота>","suggested_time":"11:00","duration_minutes":60,"reason":"Ви запланували зустріч з Колею в суботу об 11:00 на годину","description":""}}]
+
+Вхід: "купити молоко хліб і сир"
+Вихід: [{{"title":"Купити молоко, хліб і сир","quadrant":"Q3","quadrant_name":"Терміново, не важливо","suggested_date":null,"suggested_time":null,"reason":"Ви перелічили продукти, які треба купити","description":""}}]
+
+Вхід: "щопонеділка і середи о 7 ранку тренування"
+Вихід: [{{"title":"Тренування","quadrant":"Q2","quadrant_name":"Важливо, не терміново","suggested_date":"<найближчий пн або ср>","suggested_time":"07:00","recurring":true,"recurrence":{{"freq":"WEEKLY","days":["MO","WE"]}},"reason":"Ви вказали регулярні тренування по понеділках та середах о 7:00","description":""}}]
+
 Поверни ТІЛЬКИ валідний JSON масив. Без пояснень.""",
     }
     return prompts[lang]
@@ -897,13 +942,94 @@ def adjust_task_to_future(task: dict, tz_name: str):
     except Exception:
         return task, "ok"
 
+async def clean_dictation(text: str, lang: str) -> str:
+    """
+    Pre-processing step for free-form voice dictations.
+    Strips speech noise ("ну", "так", "хм"), thoughts/reflections ("хочу попробовать", "интересно"),
+    keeps only concrete intentions to do something.
+    Skipped for short messages (<60 chars) — they don't need cleaning.
+    """
+    if len(text) < 60:
+        return text
+    prompts = {
+        "ru": (
+            "Ты обрабатываешь голосовую диктовку пользователя. Твоя задача — оставить ТОЛЬКО конкретные намерения сделать что-то, "
+            "а размышления, мечты, общие фразы и речевой шум — убрать.\n\n"
+            "УБЕРИ:\n"
+            "- Речевой шум: «ну», «так», «эээ», «хм», «вот», «короче»\n"
+            "- Размышления и мечты без конкретики: «было бы неплохо», «хочется когда-нибудь», «интересно»\n"
+            "- Эмоциональные комментарии и оценки: «как же я устал», «прикольно»\n"
+            "- Воспоминания о прошлом: «вчера ходил в зал», «утром был на встрече»\n\n"
+            "ОСТАВЬ:\n"
+            "- Конкретные задачи с действием и/или временем: «завтра позвонить Пете», «купить молоко»\n"
+            "- Задачи без явной даты, но с чётким действием: «надо забрать химчистку»\n"
+            "- Цели с горизонтом и/или критерием: «к лету хочу выучить английский», «за месяц пробежать марафон»\n\n"
+            "Верни ТОЛЬКО очищенный текст без пояснений и кавычек. Если намерений нет — верни пустую строку.\n\n"
+            f"Текст: {text}"
+        ),
+        "en": (
+            "You are processing a user's voice dictation. Your task — keep ONLY concrete intentions to do something, "
+            "remove reflections, daydreams, general phrases and speech noise.\n\n"
+            "REMOVE:\n"
+            "- Speech noise: 'um', 'uh', 'like', 'you know', 'so'\n"
+            "- Reflections and daydreams without specifics: 'would be nice', 'someday', 'interesting'\n"
+            "- Emotional comments and reactions: 'I'm so tired', 'cool'\n"
+            "- Memories about the past: 'went to the gym yesterday', 'had a meeting this morning'\n\n"
+            "KEEP:\n"
+            "- Concrete tasks with action and/or time: 'call Pete tomorrow', 'buy milk'\n"
+            "- Tasks without explicit date but with clear action: 'pick up dry cleaning'\n"
+            "- Goals with horizon and/or criteria: 'learn English by summer', 'run a marathon in a month'\n\n"
+            "Return ONLY cleaned text without explanations or quotes. If no intentions — return empty string.\n\n"
+            f"Text: {text}"
+        ),
+        "uk": (
+            "Ти обробляєш голосову диктовку користувача. Твоя задача — залишити ТІЛЬКИ конкретні наміри зробити щось, "
+            "а роздуми, мрії, загальні фрази та мовленнєвий шум — прибрати.\n\n"
+            "ПРИБЕРИ:\n"
+            "- Мовленнєвий шум: «ну», «так», «еее», «хм», «коротше»\n"
+            "- Роздуми і мрії без конкретики: «було б непогано», «хочеться колись», «цікаво»\n"
+            "- Емоційні коментарі: «як же я втомився», «прикольно»\n"
+            "- Спогади про минуле: «вчора ходив у зал», «вранці була зустріч»\n\n"
+            "ЗАЛИШ:\n"
+            "- Конкретні задачі з дією/часом: «завтра подзвонити Петі», «купити молоко»\n"
+            "- Задачі без явної дати, але з чіткою дією: «треба забрати хімчистку»\n"
+            "- Цілі з горизонтом і/або критерієм: «до літа хочу вивчити англійську», «за місяць пробігти марафон»\n\n"
+            "Поверни ТІЛЬКИ очищений текст без пояснень і лапок. Якщо намірів немає — поверни порожній рядок.\n\n"
+            f"Текст: {text}"
+        ),
+    }
+    try:
+        resp = await asyncio.to_thread(
+            groq_client.chat.completions.create,
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
+            temperature=0.1,
+            max_tokens=500,
+        )
+        cleaned = resp.choices[0].message.content.strip()
+        # Strip surrounding quotes if model added them
+        if cleaned.startswith('"') and cleaned.endswith('"'):
+            cleaned = cleaned[1:-1].strip()
+        # Fallback: if cleaned text became too short or empty — use original
+        if len(cleaned) < 5:
+            return text
+        return cleaned
+    except Exception as e:
+        logger.error(f"clean_dictation failed: {e}")
+        return text
+
+
 async def process_text(text, lang, tz_name="Europe/Moscow"):
+    # Pre-process: strip speech noise from long dictations
+    cleaned = await clean_dictation(text, lang)
+    if cleaned != text:
+        logger.info(f"clean_dictation: {len(text)} -> {len(cleaned)} chars")
     response = await asyncio.to_thread(
         groq_client.chat.completions.create,
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": get_system_prompt(lang, tz_name)},
-            {"role": "user", "content": text}
+            {"role": "user", "content": cleaned}
         ],
         temperature=0.3,
     )
