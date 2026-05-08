@@ -16,6 +16,11 @@ from groq import Groq
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from google_auth_oauthlib.flow import Flow
+try:
+    from googleapiclient.errors import HttpError
+except ImportError:  # local test envs without googleapiclient installed
+    class HttpError(Exception):
+        pass
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 
@@ -697,16 +702,46 @@ async def _sync_calendar_for_user(chat_id, lang, now, time_min, time_max):
         )
         for task_id, title, event_id in tracked:
             if event_id not in cal_event_ids:
+                # Verify deletion explicitly — only a confirmed 404 (or 410) means the
+                # event is really gone. Any other error (timeout, 5xx, network) is
+                # transient and must NOT be treated as "deleted" — that produced
+                # false "🗑 Удалено из календаря" notifications.
                 try:
-                    await gcal_call(service.events().get(calendarId="primary", eventId=event_id), timeout=10)
-                    # Still exists outside the window — skip
-                except (asyncio.TimeoutError, Exception):
-                    # 404 or gone — delete from bot DB
+                    fetched = await gcal_call(
+                        service.events().get(calendarId="primary", eventId=event_id),
+                        timeout=10,
+                    )
+                except HttpError as he:
+                    status = getattr(getattr(he, "resp", None), "status", None)
+                    if status in (404, 410):
+                        await db_execute("DELETE FROM tasks WHERE id=?", (task_id,))
+                        await bot_app.bot.send_message(
+                            chat_id=chat_id,
+                            text=TEXTS[lang]["cal_sync_removed"].format(title=title),
+                            parse_mode="Markdown",
+                        )
+                    else:
+                        logger.warning(
+                            f"sync_calendar: transient HttpError {status} on get(event {event_id}) — skipping"
+                        )
+                    continue
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"sync_calendar: timeout on get(event {event_id}) — skipping"
+                    )
+                    continue
+                except Exception as e:
+                    logger.warning(
+                        f"sync_calendar: unexpected error on get(event {event_id}): {e!r} — skipping"
+                    )
+                    continue
+                # Event came back — also treat 'cancelled' status as deleted.
+                if isinstance(fetched, dict) and fetched.get("status") == "cancelled":
                     await db_execute("DELETE FROM tasks WHERE id=?", (task_id,))
                     await bot_app.bot.send_message(
                         chat_id=chat_id,
                         text=TEXTS[lang]["cal_sync_removed"].format(title=title),
-                        parse_mode="Markdown"
+                        parse_mode="Markdown",
                     )
     except Exception as e:
         logger.error(f"Calendar sync error for {chat_id}: {e}")

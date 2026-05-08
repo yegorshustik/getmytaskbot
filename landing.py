@@ -705,7 +705,6 @@ _C = {
             ("🔁", "Повторяющиеся задачи", "Ежедневные и еженедельные задачи из Google Calendar в утреннем дайджесте"),
             ("📅", "Перенос задач", "Перенеси задачу голосом или текстом — бот найдёт её и обновит в Calendar"),
             ("📝", "Чек-листы", "Надиктуй список покупок или дел — бот разобьёт на пункты, отмечай выполненные одним тапом"),
-            ("🌐", "Три языка", "Русский, английский, украинский — бот отвечает на твоём языке"),
         ],
 
         "facts_title": "В цифрах",
@@ -810,7 +809,6 @@ _C = {
             ("🔁", "Recurring tasks", "Daily and weekly tasks from Google Calendar appear in your morning digest"),
             ("📅", "Reschedule tasks", "Move a task by voice or text — the bot finds it and updates it in Calendar"),
             ("📝", "Checklists", "Dictate a shopping or to-do list — the bot splits it into items, tap to mark done"),
-            ("🌐", "Three languages", "Russian, English, Ukrainian — the bot replies in your language"),
         ],
 
         "facts_title": "By the numbers",
@@ -915,7 +913,6 @@ _C = {
             ("🔁", "Повторювані задачі", "Щоденні та щотижневі задачі з Google Calendar у ранковому дайджесті"),
             ("📅", "Перенесення задач", "Перенеси задачу голосом або текстом — бот знайде її й оновить у Calendar"),
             ("📝", "Чек-листи", "Надиктуй список покупок або справ — бот розіб'є на пункти, відзначай виконані одним тапом"),
-            ("🌐", "Три мови", "Російська, англійська, українська — бот відповідає твоєю мовою"),
         ],
 
         "facts_title": "У цифрах",
