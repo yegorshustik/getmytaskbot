@@ -381,12 +381,29 @@ def reschedule_task_in_db(task_id: int, new_date: str, new_time: str | None = No
 
 def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     conn = sqlite3.connect("users.db")
+    # ── Dedup guard: if an identical task (same title+date+time) was created
+    # within the last 60 seconds for this chat, return that id without
+    # inserting a duplicate. Protects against rapid double-taps and any
+    # upstream code path that might re-fire a save.
+    title = task["title"]
+    sdate = task.get("suggested_date", "")
+    stime = task.get("suggested_time", "") or ""
+    dup_row = conn.execute(
+        "SELECT id FROM tasks WHERE chat_id=? AND title=? AND suggested_date=? "
+        "AND COALESCE(suggested_time,'')=? "
+        "AND created_at >= datetime('now','-60 seconds') "
+        "ORDER BY id DESC LIMIT 1",
+        (chat_id, title, sdate, stime)
+    ).fetchone()
+    if dup_row:
+        conn.close()
+        return dup_row[0]
     cur = conn.execute(
         "INSERT INTO tasks (chat_id, title, description, quadrant, quadrant_name, suggested_date, "
         "suggested_time, done, synced_to_calendar, google_event_id, task_url, goal_id) "
         "VALUES (?,?,?,?,?,?,?,0,?,?,?,?)",
-        (chat_id, task["title"], task.get("description", ""), task.get("quadrant", ""),
-         task.get("quadrant_name", ""), task.get("suggested_date", ""), task.get("suggested_time", ""),
+        (chat_id, title, task.get("description", ""), task.get("quadrant", ""),
+         task.get("quadrant_name", ""), sdate, task.get("suggested_time", ""),
          synced_to_calendar, google_event_id,
          task.get("url") or task.get("task_url"), task.get("goal_id"))
     )

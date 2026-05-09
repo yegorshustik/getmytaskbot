@@ -1205,6 +1205,7 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
     cleaned = await clean_dictation(text, lang)
     if cleaned != text:
         logger.info(f"clean_dictation: {len(text)} -> {len(cleaned)} chars")
+    logger.info(f"process_text input lang={lang} tz={tz_name} text={cleaned!r}")
     response = await asyncio.to_thread(
         groq_client.chat.completions.create,
         model="llama-3.3-70b-versatile",
@@ -1220,7 +1221,9 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
         if raw.startswith("json"):
             raw = raw[4:]
     try:
-        return json.loads(raw.strip())
+        parsed = json.loads(raw.strip())
+        logger.info(f"process_text output: {parsed!r}")
+        return parsed
     except json.JSONDecodeError as e:
         logger.error(f"process_text JSON parse error: {e}\nRaw: {raw[:200]}")
         return []
@@ -1907,6 +1910,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             os.unlink(tmp_path)
         text = transcription.text.strip()
+        logger.info(
+            f"voice_transcribed chat_id={chat_id} lang={lang} "
+            f"voice_id={voice.file_id} duration={voice.duration} "
+            f"text={text!r}"
+        )
         if not text or len(text) < 5:
             await update.message.reply_text(TEXTS[lang]["no_text"])
             return
