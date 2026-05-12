@@ -121,7 +121,7 @@ def add_to_calendar(chat_id, task):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
     reminder_mins = user.get("reminder_minutes", 30) if user else 30
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
+    date = task.get("suggested_date") or datetime.now().strftime("%Y-%m-%d")
     time = task.get("suggested_time")
     duration = task.get("duration_minutes", 30)
     if time:
@@ -169,7 +169,7 @@ def add_recurring_to_calendar(chat_id, task):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
     reminder_mins = user.get("reminder_minutes", 30) if user else 30
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
+    date = task.get("suggested_date") or datetime.now().strftime("%Y-%m-%d")
     time = task.get("suggested_time")
     recurrence_obj = task.get("recurrence", {})
     freq = recurrence_obj.get("freq", "DAILY")
@@ -206,7 +206,7 @@ def add_recurring_to_calendar(chat_id, task):
 # ─── iCal feed ────────────────────────────────────────────────────────────────
 
 def generate_ics(task, tz_name="Europe/Moscow") -> bytes:
-    date = task.get("suggested_date", datetime.now().strftime("%Y-%m-%d"))
+    date = task.get("suggested_date") or datetime.now().strftime("%Y-%m-%d")
     time = task.get("suggested_time")
     title = task.get("title", "Task").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
     description = task.get("reason", "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
