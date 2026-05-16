@@ -4359,6 +4359,22 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
   via <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>
   or by using the Disconnect button in the bot settings.</p>
 
+  <div class="card" style="border:1px solid #4a4a4a;background:#1a1a1a;padding:16px;border-radius:8px;margin:16px 0">
+    <strong>Limited Use disclosure.</strong>
+    Get My Task’s use and transfer of information received from Google APIs to any other
+    app will adhere to
+    <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.
+    <br/><br/>
+    Specifically, Get My Task:
+    <ul>
+      <li>only uses Google user data to provide and improve the user-facing feature it was granted for (Google Calendar sync);</li>
+      <li>does not transfer Google user data to third parties except as necessary to provide that feature, comply with applicable law, or as part of a merger / acquisition / asset sale with appropriate user notice;</li>
+      <li>does not use Google user data for serving ads, including retargeting, personalized, or interest-based advertising;</li>
+      <li>does not allow humans to read Google user data unless we have your affirmative consent for specific messages, do so for security purposes (e.g. investigating abuse), to comply with applicable law, or our use is limited to internal operations and the data (including derivatives) has been aggregated and anonymized.</li>
+    </ul>
+  </div>
+
   <h2>4. Third-party services</h2>
   <ul>
     <li><strong>Telegram</strong> — messaging platform (<a href="https://telegram.org/privacy" target="_blank">Privacy Policy</a>)</li>
