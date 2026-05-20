@@ -885,6 +885,9 @@ async def send_morning_digests():
                             lines.append(f"• {_strip_bday(title)} — {rel}")
                 return "\n".join(lines)
 
+            user = get_user(chat_id)
+            is_onboarding = bool(user and not user.get("first_task_done"))
+
             if today_rows:
                 body = _build_digest_block(today_rows, [])
                 text = t["morning_digest"].format(tasks=body)
@@ -892,10 +895,18 @@ async def send_morning_digests():
                 body = _build_digest_block([], future_rows)
                 text = t["morning_digest_future"].format(tasks=body)
             else:
-                text = t["morning_digest_empty"]
+                # No tasks at all — don't nag with "you have no tasks" every day.
+                #  • onboarding users still get the empty digest + first-task offer
+                #  • everyone else: stay silent, except a light voice-input
+                #    reminder once a week (Monday)
+                if is_onboarding:
+                    text = t["morning_digest_empty"]
+                elif now.weekday() == 0:
+                    text = t["morning_digest_empty_weekly"]
+                else:
+                    return
             # First reminder offer
-            user = get_user(chat_id)
-            if user and not user.get("first_task_done"):
+            if is_onboarding:
                 text += t["morning_first_offer"].format(time=rtime)
                 markup = InlineKeyboardMarkup([[
                     InlineKeyboardButton(t["btn_reminder_change"], callback_data="settings_reminder"),
