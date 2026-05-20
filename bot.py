@@ -319,6 +319,7 @@ def get_system_prompt(lang: str, tz_name: str = "Europe/Moscow") -> str:
 - "сейчас", "прямо сейчас" — текущее время {current_time}.
 - "скоро", "вскоре", "через какое-то время" — это НЕ конкретное время, оставь null.
 - "завтра", "послезавтра" — только дата, время null если не указано явно.
+- Расплывчатое время суток ОБЯЗАТЕЛЬНО конвертируй в конкретное HH:MM: "утром"/"с утра" → 09:00, "днём"/"в обед"/"в полдень" → 13:00, "вечером" → 19:00, "ночью"/"поздно вечером" → 22:00. НИКОГДА не пиши в suggested_time слово вроде "вечером" — только HH:MM или null.
 ВАЖНО про suggested_time: (1) Всегда записывай время в поле suggested_time (HH:MM), НИКОГДА не включай время в поле title. (2) Убирай из title слова "утра", "вечера", "ночи", "дня" и сами цифры времени — они идут в suggested_time. (3) Если время указано явно и уже прошло — флипни AM/PM (+12 ч).
 ВАЖНО про длительность: если пользователь явно указал продолжительность ("на час", "на 45 минут", "с 14:00 до 16:00", "2 часа") — добавь поле duration_minutes (целое число). Если длительность не указана — не включай поле duration_minutes.
 Если задача повторяющаяся (например: "каждый день", "по вторникам и четвергам", "каждую неделю по пятницам", "всегда в 7 утра"), добавь поле recurring: true и recurrence: {{"freq": "DAILY" или "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — только для WEEKLY, только нужные дни}}. suggested_date — ближайшая дата первого повторения. Если задача одиночная — не включай поле recurring.
@@ -372,6 +373,7 @@ Relative time rules (ALWAYS extract suggested_date and suggested_time, do NOT le
 - "now", "right now" — current time {current_time}.
 - "soon", "in a while" — NOT a concrete time, leave null.
 - "tomorrow", "next week" — date only, time null unless stated.
+- Vague times of day MUST be converted to a concrete HH:MM: "in the morning" → 09:00, "at noon"/"midday"/"in the afternoon" → 13:00, "in the evening" → 19:00, "at night"/"late evening" → 22:00. NEVER put a word like "evening" in suggested_time — only HH:MM or null.
 IMPORTANT about suggested_time: (1) Always put time in suggested_time field (HH:MM), NEVER include time in the title. (2) Strip words like "am", "pm", "morning", "evening" and the time digits from title — they go into suggested_time. (3) If time was explicitly stated but is in the past — flip AM/PM (+12h).
 IMPORTANT about duration: if the user explicitly states a duration ("for an hour", "45 minutes", "from 2pm to 4pm", "2 hours") — add field duration_minutes (integer). If no duration is stated — do not include duration_minutes.
 If the task is recurring (e.g. "every day", "every Tuesday and Thursday", "every week on Friday", "always at 7am"), add field recurring: true and recurrence: {{"freq": "DAILY" or "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — only for WEEKLY, only needed days}}. suggested_date — nearest first occurrence. If the task is one-time — do not include recurring field.
@@ -425,6 +427,7 @@ Return ONLY a valid JSON array. No explanations.""",
 - "зараз", "просто зараз" — поточний час {current_time}.
 - "скоро", "вскорі", "через якийсь час" — це НЕ конкретний час, залиш null.
 - "завтра", "післязавтра" — лише дата, час null якщо не вказано явно.
+- Розпливчастий час доби ОБОВ'ЯЗКОВО конвертуй у конкретний HH:MM: "вранці"/"зранку" → 09:00, "вдень"/"опівдні" → 13:00, "ввечері" → 19:00, "вночі"/"пізно ввечері" → 22:00. НІКОЛИ не пиши в suggested_time слово на кшталт "ввечері" — тільки HH:MM або null.
 ВАЖЛИВО про suggested_time: (1) Завжди записуй час у поле suggested_time (HH:MM), НІКОЛИ не включай час у поле title. (2) Прибирай з title слова "ранку", "вечора", "ночі", "дня" та самі цифри часу — вони йдуть у suggested_time. (3) Якщо час вказано явно, але вже минув — флипни AM/PM (+12 год).
 ВАЖЛИВО про тривалість: якщо користувач явно вказав тривалість ("на годину", "на 45 хвилин", "з 14:00 до 16:00", "2 години") — додай поле duration_minutes (ціле число). Якщо тривалість не вказана — не включай поле duration_minutes.
 Якщо задача повторювана (наприклад: "щодня", "щовівторка та четверга", "щотижня по п'ятницях", "завжди о 7 ранку"), додай поле recurring: true та recurrence: {{"freq": "DAILY" або "WEEKLY", "days": ["MO","TU","WE","TH","FR","SA","SU"] — лише для WEEKLY, лише потрібні дні}}. suggested_date — найближча дата першого повторення. Якщо задача одноразова — не включай поле recurring.
@@ -1217,6 +1220,35 @@ async def clean_dictation(text: str, lang: str) -> str:
         return text
 
 
+# Vague time-of-day words → concrete HH:MM. Safety net in case the LLM
+# returns a word instead of a time (e.g. "evening"), which would silently
+# break reminders (the reminder engine compares times as strings).
+_VAGUE_TIME_MAP = {
+    "утром": "09:00", "с утра": "09:00", "поутру": "09:00",
+    "вранці": "09:00", "зранку": "09:00",
+    "morning": "09:00", "in the morning": "09:00",
+    "днём": "13:00", "днем": "13:00", "в обед": "13:00", "в полдень": "13:00",
+    "вдень": "13:00", "опівдні": "13:00",
+    "noon": "13:00", "midday": "13:00", "afternoon": "13:00", "in the afternoon": "13:00",
+    "вечером": "19:00", "под вечер": "19:00", "ввечері": "19:00", "під вечір": "19:00",
+    "evening": "19:00", "in the evening": "19:00",
+    "ночью": "22:00", "поздно вечером": "22:00", "вночі": "22:00", "пізно ввечері": "22:00",
+    "night": "22:00", "at night": "22:00", "late evening": "22:00",
+}
+_HHMM_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def _normalize_suggested_time(val):
+    """Return a valid HH:MM string, or None if the value isn't a real time."""
+    if not val or not isinstance(val, str):
+        return None
+    s = val.strip().lower()
+    m = _HHMM_RE.match(s)
+    if m:
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+    return _VAGUE_TIME_MAP.get(s)
+
+
 async def process_text(text, lang, tz_name="Europe/Moscow"):
     # Pre-process: strip speech noise from long dictations
     cleaned = await clean_dictation(text, lang)
@@ -1239,6 +1271,16 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
             raw = raw[4:]
     try:
         parsed = json.loads(raw.strip())
+        # Safety net: coerce suggested_time to a real HH:MM (or None).
+        # Guards against the LLM returning words like "evening".
+        if isinstance(parsed, list):
+            for _task in parsed:
+                if isinstance(_task, dict) and "suggested_time" in _task:
+                    raw_time = _task.get("suggested_time")
+                    norm = _normalize_suggested_time(raw_time)
+                    if raw_time and norm != raw_time:
+                        logger.info(f"process_text: normalized suggested_time {raw_time!r} -> {norm!r}")
+                    _task["suggested_time"] = norm
         logger.info(f"process_text output: {parsed!r}")
         return parsed
     except json.JSONDecodeError as e:
