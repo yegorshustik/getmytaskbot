@@ -74,6 +74,7 @@ def init_db():
         ("ical_token", "TEXT DEFAULT NULL"),
         ("last_reengagement", "TEXT DEFAULT NULL"),
         ("reengagement_count", "INTEGER DEFAULT 0"),
+        ("reengagement_off", "INTEGER DEFAULT 0"),
         ("first_name", "TEXT DEFAULT NULL"),
         ("username", "TEXT DEFAULT NULL"),
         ("registered_at", "TEXT DEFAULT NULL"),
@@ -284,7 +285,7 @@ _ALLOWED_USER_COLS = {
     "lang", "calendar_token", "first_task_done", "calendar_connected",
     "timezone", "reminder_time", "reminder_enabled", "reminder_before",
     "reminder_minutes", "pending_task_json", "last_active", "ical_token",
-    "last_reengagement", "reengagement_count",
+    "last_reengagement", "reengagement_count", "reengagement_off",
     "first_name", "username", "registered_at",
 }
 
@@ -407,6 +408,9 @@ def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
          synced_to_calendar, google_event_id,
          task.get("url") or task.get("task_url"), task.get("goal_id"))
     )
+    # User created a task — they're active again. Reset the re-engagement
+    # streak so future nudges start fresh from message #1.
+    conn.execute("UPDATE users SET reengagement_count=0 WHERE chat_id=?", (chat_id,))
     conn.commit()
     task_id = cur.lastrowid
     conn.close()

@@ -895,14 +895,12 @@ async def send_morning_digests():
                 body = _build_digest_block([], future_rows)
                 text = t["morning_digest_future"].format(tasks=body)
             else:
-                # No tasks at all — don't nag with "you have no tasks" every day.
-                #  • onboarding users still get the empty digest + first-task offer
-                #  • everyone else: stay silent, except a light voice-input
-                #    reminder once a week (Monday)
+                # No tasks at all. Onboarding users still get the empty digest
+                # + first-task offer. Everyone else: stay silent here — the
+                # re-engagement job (check_reengagement) handles inactive-user
+                # nudges with rotating motivational messages.
                 if is_onboarding:
                     text = t["morning_digest_empty"]
-                elif now.weekday() == 0:
-                    text = t["morning_digest_empty_weekly"]
                 else:
                     return
             # First reminder offer
@@ -1056,9 +1054,9 @@ async def send_weekly_digest():
 # ─── Re-engagement ────────────────────────────────────────────────────────────
 
 _REENGAGEMENT_HOUR = 10      # send at 10:xx in user's local timezone
-_REENGAGEMENT_INACTIVE_DAYS = 3   # trigger after 3 days of inactivity
-_REENGAGEMENT_COOLDOWN_DAYS = 7   # minimum gap between messages
-_REENGAGEMENT_MAX_COUNT = 3       # stop after 3 messages total
+_REENGAGEMENT_INACTIVE_DAYS = 2   # trigger after 2 days of inactivity
+_REENGAGEMENT_COOLDOWN_DAYS = 2   # minimum gap between messages
+_REENGAGEMENT_OFFER_DISABLE_AT = 2  # from the 3rd nudge (0-indexed >=2) show "stop" button
 
 async def check_reengagement():
     """Send re-engagement nudges to inactive users at 10:00 their local time."""
@@ -1067,12 +1065,11 @@ async def check_reengagement():
         SELECT chat_id, lang, timezone, reengagement_count
         FROM users
         WHERE lang IS NOT NULL
+          AND COALESCE(reengagement_off, 0) = 0
           AND last_active < datetime('now', ?)
-          AND reengagement_count < ?
           AND (last_reengagement IS NULL OR last_reengagement < datetime('now', ?))
     """, (
         f"-{_REENGAGEMENT_INACTIVE_DAYS} days",
-        _REENGAGEMENT_MAX_COUNT,
         f"-{_REENGAGEMENT_COOLDOWN_DAYS} days",
     )).fetchall()
     conn.close()
@@ -1091,9 +1088,18 @@ async def check_reengagement():
 
             lang = lang or "ru"
             messages = TEXTS[lang]["reengagement"]
-            text = messages[min(count, len(messages) - 1)]
+            # Cycle through the motivational messages so they keep varying.
+            text = messages[count % len(messages)]
+            # From the 3rd nudge onward, give the user a way to turn this off.
+            markup = None
+            if count >= _REENGAGEMENT_OFFER_DISABLE_AT:
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(TEXTS[lang]["btn_reengage_off"],
+                                         callback_data="reengage_off")
+                ]])
 
-            await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+            await bot_app.bot.send_message(chat_id=chat_id, text=text,
+                                           parse_mode="Markdown", reply_markup=markup)
 
             # Update counters
             save_user(chat_id,
@@ -2958,6 +2964,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_announce(query, context, data, chat_id)
     if data in ("connect_calendar", "disconnect_calendar", "skip_calendar"):
         return await _cb_calendar_connect(query, context, data, chat_id, lang, user)
+    if data == "reengage_off":
+        save_user(chat_id, reengagement_off=1)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.message.reply_text(TEXTS[lang]["reengage_off_ack"])
+        return
     if (data.startswith("settings_") or data.startswith("reminder_") or data == "reminder_disable"
             or data.startswith("archive_page_") or data.startswith("set_remind_min_")
             or data in ("apple_cal_disconnect", "apple_cal_connect")):
