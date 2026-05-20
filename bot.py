@@ -2304,7 +2304,17 @@ async def _cb_calendar_connect(query, context, data: str, chat_id: int, lang: st
         await query.edit_message_reply_markup(reply_markup=None)
         tasks = context.user_data.get("tasks", [])
         if tasks:
+            # Save tasks to the DB immediately — they must NOT be lost if the
+            # user never finishes OAuth. Each task keeps its _saved_task_id so
+            # the post-OAuth step can link it to a calendar event without
+            # inserting a duplicate row.
+            for task in tasks:
+                if task.get("recurring"):
+                    continue  # recurring tasks don't reach this path
+                if not task.get("_saved_task_id"):
+                    task["_saved_task_id"] = save_task_to_db(chat_id, task)
             save_user(chat_id, pending_task_json=json.dumps(tasks))
+            await query.message.reply_text(TEXTS[lang]["task_saved"], parse_mode="Markdown")
         auth_url = get_auth_url(chat_id)
         await query.message.reply_text(
             TEXTS[lang]["connect_link"],
@@ -2752,7 +2762,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
             return
         msg = await query.message.reply_text(TEXTS[lang]["adding"])
         try:
-            link, task_id = add_to_calendar(chat_id, task)
+            link, task_id = add_to_calendar(chat_id, task, existing_task_id=task.get("_saved_task_id"))
             context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
             await msg.delete()
             success_texts = {
@@ -2778,7 +2788,8 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                 "en": f"❌ Failed to add to Google Calendar.\n\nError: `{str(e)}`\n\nTask saved to your task list.",
                 "uk": f"❌ Не вдалося додати до Google Calendar.\n\nПомилка: `{str(e)}`\n\nЗадачу збережено у списку задач.",
             }
-            save_task_to_db(chat_id, task)
+            if not task.get("_saved_task_id"):
+                save_task_to_db(chat_id, task)
             await msg.edit_text(error_texts.get(lang, error_texts["ru"]), parse_mode="Markdown")
     elif action == "save":
         if user and user["calendar_connected"]:
@@ -2805,7 +2816,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                 await query.edit_message_reply_markup(reply_markup=None)
                 msg = await query.message.reply_text(TEXTS[lang]["adding"])
                 try:
-                    link, task_id = add_to_calendar(chat_id, task)
+                    link, task_id = add_to_calendar(chat_id, task, existing_task_id=task.get("_saved_task_id"))
                     context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
                     await msg.delete()
                     added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
@@ -2821,10 +2832,11 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                         await ask_reminder_minutes(query.message, chat_id, lang)
                 except Exception as e:
                     logger.error(f"auto calendar sync error for {chat_id}: {e}", exc_info=True)
-                    save_task_to_db(chat_id, task)
+                    if not task.get("_saved_task_id"):
+                        save_task_to_db(chat_id, task)
                     await msg.edit_text(TEXTS[lang]["calendar_error"] + str(e), parse_mode="Markdown")
                 return
-        task_id = save_task_to_db(chat_id, task)
+        task_id = task.get("_saved_task_id") or save_task_to_db(chat_id, task)
         context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
         emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
         date_display = format_date(task["suggested_date"], lang)
@@ -3982,36 +3994,50 @@ async def oauth_callback(request):
         text=TEXTS[lang]["calendar_connected"],
         reply_markup=main_menu_keyboard(lang, calendar_connected=True, task_count=get_active_task_count(chat_id), chat_id=chat_id)
     )
-    # Restore pending tasks if user connected calendar from a task card
+    # Restore pending tasks if user connected calendar from a task card.
+    # The tasks were ALREADY saved to the DB when the user tapped "Google
+    # Calendar" (see _cb_calendar_connect) — so here we just push each one
+    # into the now-connected calendar. Nothing to lose, no Save buttons.
     pending_json = user.get("pending_task_json") if user else None
     if pending_json:
         try:
             pending_tasks = json.loads(pending_json)
-            # Note: don't clear pending_task_json here — user hasn't acted on tasks yet.
-            # It'll be cleared once they press add/save/skip (see handle_callback).
-            resume_texts = {
-                "ru": "📋 Вот ваши задачи — теперь можно добавить в Google Calendar:",
-                "en": "📋 Here are your tasks — now you can add them to Google Calendar:",
-                "uk": "📋 Ось ваші задачі — тепер можна додати до Google Calendar:",
-            }
-            await bot_app.bot.send_message(chat_id=chat_id, text=resume_texts.get(lang, resume_texts["ru"]))
-            for i, task in enumerate(pending_tasks):
+            save_user(chat_id, pending_task_json=None)  # consumed
+            for task in pending_tasks:
+                if task.get("recurring"):
+                    continue
+                # Normalize stale time values (e.g. "evening") before any
+                # calendar insert, which would otherwise crash on strptime.
+                task["suggested_time"] = _normalize_suggested_time(task.get("suggested_time"))
                 emoji = QUADRANT_EMOJI.get(task.get("quadrant", ""), "⚪")
                 date_display = format_date(task.get("suggested_date", ""), lang)
                 time_sep = _TIME_SEP.get(lang, " ")
-                text = (
+                card = (
                     f"{emoji} *{task['title']}*\n"
                     f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
                     f"📅 {date_display}"
-                    + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "") + "\n"
-                    f"_{task.get('reason', '')}_"
+                    + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
                 )
-                # Google Calendar just connected — sync is automatic, no extra calendar buttons
-                keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
-                     InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
-                ])
-                await bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=keyboard)
+                try:
+                    link, _ = add_to_calendar(chat_id, task,
+                                              existing_task_id=task.get("_saved_task_id"))
+                    markup = (InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]])
+                              if link else None)
+                    await bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        text=card + "\n\n" + TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                        parse_mode="Markdown", reply_markup=markup,
+                    )
+                except Exception as e:
+                    logger.warning(f"pending->calendar add failed for {chat_id}: {e}")
+                    # Task is already in the DB — make sure of it, then confirm.
+                    if not task.get("_saved_task_id"):
+                        save_task_to_db(chat_id, task)
+                    await bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        text=card + "\n\n" + TEXTS[lang]["task_saved"],
+                        parse_mode="Markdown",
+                    )
         except Exception:
             pass
     oauth_success_html = """<!DOCTYPE html>

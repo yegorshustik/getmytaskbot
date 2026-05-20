@@ -19,7 +19,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-from db import get_user, save_user, save_task_to_db, save_recurring_task_to_db
+from db import get_user, save_user, save_task_to_db, save_recurring_task_to_db, update_task_calendar_link
 from texts import TEXTS
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,13 @@ def update_calendar_event_date(chat_id: int, event_id: str, new_date: str, new_t
         return False
 
 
-def add_to_calendar(chat_id, task):
+def add_to_calendar(chat_id, task, existing_task_id=None):
+    """Add a task to Google Calendar.
+
+    If existing_task_id is given, the task is already in the DB — we just
+    link it to the new calendar event (UPDATE) instead of inserting a new
+    row. This avoids duplicates when a task was saved before OAuth.
+    """
     service = get_calendar_service_for_user(chat_id)
     if not service:
         return None, None
@@ -144,7 +150,11 @@ def add_to_calendar(chat_id, task):
         },
     }
     result = service.events().insert(calendarId="primary", body=event).execute()
-    task_id = save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
+    if existing_task_id is not None:
+        update_task_calendar_link(existing_task_id, result.get("id"))
+        task_id = existing_task_id
+    else:
+        task_id = save_task_to_db(chat_id, task, synced_to_calendar=1, google_event_id=result.get("id"))
     return result.get("htmlLink"), task_id
 
 

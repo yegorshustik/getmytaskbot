@@ -417,6 +417,17 @@ def save_task_to_db(chat_id, task, synced_to_calendar=0, google_event_id=None):
     return task_id
 
 
+def update_task_calendar_link(task_id: int, google_event_id: str):
+    """Mark an already-saved task as synced to Google Calendar (no new row)."""
+    conn = sqlite3.connect("users.db")
+    conn.execute(
+        "UPDATE tasks SET synced_to_calendar=1, google_event_id=? WHERE id=?",
+        (google_event_id, task_id)
+    )
+    conn.commit()
+    conn.close()
+
+
 def link_task_to_goal(task_id: int, goal_id: int):
     """Update an already-saved task row to link it to a goal (no duplicate insert)."""
     conn = sqlite3.connect("users.db")
