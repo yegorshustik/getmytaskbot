@@ -3897,9 +3897,9 @@ def _build_tasks_view(chat_id: int, lang: str):
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
         (chat_id, today)
     ).fetchall()
-    # Strictly-future, not-done tasks are the only ones eligible for deletion.
+    # Tasks from today onwards that aren't done — eligible for deletion.
     future_count = conn.execute(
-        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date > ? AND done=0",
+        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date >= ? AND done=0",
         (chat_id, today)
     ).fetchone()[0]
     conn.close()
@@ -3952,7 +3952,7 @@ async def _cb_delete(query, context, data: str, chat_id: int, lang: str, user):
         conn = sqlite3.connect("users.db")
         rows = conn.execute(
             """SELECT id, title, suggested_date, suggested_time FROM tasks
-               WHERE chat_id=? AND suggested_date > ? AND done=0
+               WHERE chat_id=? AND suggested_date >= ? AND done=0
                ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
             (chat_id, today)
         ).fetchall()
