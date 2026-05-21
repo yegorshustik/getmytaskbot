@@ -4424,7 +4424,7 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
 <body>
 <div class="wrap">
   <h1>Privacy Policy</h1>
-  <p class="sub">Get My Task Bot &nbsp;·&nbsp; Last updated: April 2026</p>
+  <p class="sub">Get My Task Bot &nbsp;·&nbsp; Last updated: May 2026</p>
 
   <h2>1. What we collect</h2>
   <p>When you use Get My Task, we store the minimum data necessary to provide the service:</p>
@@ -4468,11 +4468,38 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
     </ul>
   </div>
 
-  <h2>4. Third-party services</h2>
+  <h2>4. Data sharing and disclosure</h2>
+  <p>We do not sell or rent your data. We do not use your data — including
+  Google user data — for advertising.</p>
+  <p>Your Google user data (the Google OAuth token and your Google Calendar
+  events) specifically:</p>
   <ul>
-    <li><strong>Telegram</strong> — messaging platform (<a href="https://telegram.org/privacy" target="_blank">Privacy Policy</a>)</li>
-    <li><strong>Google Calendar API</strong> — calendar sync (<a href="https://policies.google.com/privacy" target="_blank">Privacy Policy</a>)</li>
-    <li><strong>Groq API</strong> — voice transcription (<a href="https://groq.com/privacy-policy/" target="_blank">Privacy Policy</a>)</li>
+    <li>is exchanged directly between our server and Google's API over an
+    encrypted (HTTPS/TLS) connection;</li>
+    <li>is never sold, rented, or shared with advertising networks or data brokers;</li>
+    <li>is never sent to our transcription / AI provider (Groq) — Groq only
+    processes the voice and text messages you send to the bot, and never
+    receives your Google Calendar data;</li>
+    <li>is shown back to you only through Telegram, as part of the reminders
+    and digests you requested (for example, a calendar event title appearing
+    in a reminder message).</li>
+  </ul>
+  <p>We disclose data only when strictly necessary to: (a) comply with
+  applicable law or a valid legal request; (b) protect the rights, safety, or
+  security of our users or the service; or (c) complete a merger, acquisition,
+  or sale of assets — in which case we will give you advance notice before any
+  data becomes subject to a different privacy policy.</p>
+  <p>The following service providers (sub-processors) may process data on our
+  behalf, strictly to operate the service:</p>
+  <ul>
+    <li><strong>Telegram</strong> — message delivery; all bot interaction
+    passes through Telegram (<a href="https://telegram.org/privacy" target="_blank">Privacy Policy</a>)</li>
+    <li><strong>Google</strong> — Calendar API, only if you connect Google
+    Calendar (<a href="https://policies.google.com/privacy" target="_blank">Privacy Policy</a>)</li>
+    <li><strong>Groq</strong> — voice transcription and task parsing; processes
+    the messages you send, not your calendar data (<a href="https://groq.com/privacy-policy/" target="_blank">Privacy Policy</a>)</li>
+    <li><strong>Oracle Cloud Infrastructure</strong> — hosting of the private
+    server where data is stored (<a href="https://www.oracle.com/legal/privacy/" target="_blank">Privacy Policy</a>)</li>
   </ul>
 
   <h2>5. Data retention</h2>
@@ -4480,10 +4507,31 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
   all your data at any time by contacting us. Disconnecting Google Calendar
   immediately removes your OAuth token from our database.</p>
 
-  <h2>6. Security</h2>
-  <p>Data is stored on a private server with restricted access. OAuth tokens are
-  stored encrypted at rest. We do not log the content of your tasks beyond what
-  is necessary for the service to function.</p>
+  <h2>6. Data protection</h2>
+  <p>We apply the following measures to protect your data, including sensitive
+  data such as your Google OAuth token and Google Calendar content:</p>
+  <ul>
+    <li><strong>Encryption in transit</strong> — all communication with
+    Telegram, Google APIs, and our server uses HTTPS/TLS.</li>
+    <li><strong>Encryption at rest</strong> — Google OAuth tokens are stored
+    encrypted in our database.</li>
+    <li><strong>Access control</strong> — the server and database are private;
+    access is restricted to the developer via key-based SSH, and the database
+    is not exposed to the public internet.</li>
+    <li><strong>Data minimization</strong> — we collect only what is needed to
+    run the service (see section 1) and request the minimum Google scope
+    required.</li>
+    <li><strong>No sensitive logging</strong> — we do not log the content of
+    your tasks or your calendar data beyond what is required for the service to
+    function, and logs never contain OAuth tokens.</li>
+    <li><strong>Revocation</strong> — you can disconnect Google Calendar at any
+    time, which immediately deletes your OAuth token from our database; you can
+    also revoke access from your
+    <a href="https://myaccount.google.com/permissions" target="_blank">Google Account</a>.</li>
+    <li><strong>Incident response</strong> — if we become aware of a data breach
+    affecting your data, we will act promptly to contain it and notify affected
+    users.</li>
+  </ul>
 
   <h2>7. Your rights</h2>
   <p>You have the right to access, correct, or delete your personal data. To
