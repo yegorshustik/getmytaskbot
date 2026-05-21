@@ -3048,6 +3048,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_checklist(query, context, data, chat_id, lang)
     if data in ("deletedata_confirm", "deletedata_cancel"):
         return await _cb_deletedata(query, context, data, chat_id, lang)
+    if data in ("delmenu", "delback") or data.startswith(("delpick_", "deldo_")):
+        return await _cb_delete(query, context, data, chat_id, lang, user)
     return await _cb_task_action(query, context, data, chat_id, lang, user)
 
 
@@ -3874,32 +3876,36 @@ async def _cb_deletedata(query, context, data: str, chat_id: int, lang: str):
         await query.edit_message_text(t["deletedata_cancelled"])
 
 
-async def _send_tasks_grouped(update, chat_id: int, lang: str):
-    """Shared logic for tasks_command and mytasks_command."""
+def _build_tasks_view(chat_id: int, lang: str):
+    """Build the 'My tasks' screen — returns (text, reply_markup).
+
+    reply_markup carries the calendar-open button (if connected) and the
+    '🗑 Delete a task' button (only when the user has strictly-future tasks).
+    """
     user = get_user(chat_id)
     user_tz = user["timezone"] if user else "Europe/Moscow"
     now = datetime.now(ZoneInfo(user_tz))
     today = now.strftime("%Y-%m-%d")
     tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
     conn = sqlite3.connect("users.db")
     # Show all tasks from today onwards (today = active even if time passed).
     # Archive is yesterday and before.
-    current_time = now.strftime("%H:%M")
     rows = conn.execute(
         """SELECT title, quadrant, suggested_date, suggested_time FROM tasks
            WHERE chat_id=? AND suggested_date >= ?
            ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
         (chat_id, today)
     ).fetchall()
+    # Strictly-future, not-done tasks are the only ones eligible for deletion.
+    future_count = conn.execute(
+        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date > ? AND done=0",
+        (chat_id, today)
+    ).fetchone()[0]
     conn.close()
     if not rows:
-        await update.message.reply_text(TEXTS[lang]["tasks_empty"])
-        return
+        return TEXTS[lang]["tasks_empty"], None
     text = build_tasks_by_day(rows, lang, today, tomorrow, current_time)
-    # Add calendar link button if connected
-    reply_markup = None
-    gcal_connected = bool(user and user.get("calendar_connected"))
-    ical_token = user.get("ical_token") if user else None
     cal_labels = {
         "ru": "📅 Открыть в Google Календаре",
         "en": "📅 Open in Google Calendar",
@@ -3910,16 +3916,124 @@ async def _send_tasks_grouped(update, chat_id: int, lang: str):
         "en": "📅 Open in Apple Calendar",
         "uk": "📅 Відкрити в Apple Календарі",
     }
+    btn_rows = []
+    gcal_connected = bool(user and user.get("calendar_connected"))
+    ical_token = user.get("ical_token") if user else None
     if gcal_connected:
-        reply_markup = InlineKeyboardMarkup([[
-            InlineKeyboardButton(cal_labels.get(lang, cal_labels["ru"]), url="https://calendar.google.com")
-        ]])
+        btn_rows.append([InlineKeyboardButton(
+            cal_labels.get(lang, cal_labels["ru"]), url="https://calendar.google.com")])
     elif ical_token:
-        open_url = f"{BASE_URL}/ical-open/{ical_token}"
-        reply_markup = InlineKeyboardMarkup([[
-            InlineKeyboardButton(apple_labels.get(lang, apple_labels["ru"]), url=open_url)
-        ]])
+        btn_rows.append([InlineKeyboardButton(
+            apple_labels.get(lang, apple_labels["ru"]), url=f"{BASE_URL}/ical-open/{ical_token}")])
+    if future_count > 0:
+        btn_rows.append([InlineKeyboardButton(
+            TEXTS[lang]["btn_delete_task"], callback_data="delmenu")])
+    return text, (InlineKeyboardMarkup(btn_rows) if btn_rows else None)
+
+
+async def _send_tasks_grouped(update, chat_id: int, lang: str):
+    """Shared logic for tasks_command and mytasks_command."""
+    text, reply_markup = _build_tasks_view(chat_id, lang)
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
+
+
+async def _cb_delete(query, context, data: str, chat_id: int, lang: str, user):
+    """Task deletion flow: delmenu → delpick_<id> → deldo_<id>, delback."""
+    t = TEXTS[lang]
+    user_tz = user["timezone"] if user else "Europe/Moscow"
+    today = datetime.now(ZoneInfo(user_tz)).strftime("%Y-%m-%d")
+
+    if data == "delback":
+        text, reply_markup = _build_tasks_view(chat_id, lang)
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=reply_markup)
+        return
+
+    if data == "delmenu":
+        conn = sqlite3.connect("users.db")
+        rows = conn.execute(
+            """SELECT id, title, suggested_date, suggested_time FROM tasks
+               WHERE chat_id=? AND suggested_date > ? AND done=0
+               ORDER BY suggested_date ASC, suggested_time ASC LIMIT 50""",
+            (chat_id, today)
+        ).fetchall()
+        conn.close()
+        if not rows:
+            await query.edit_message_text(
+                t["delete_none"],
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t["btn_back"], callback_data="delback")]]))
+            return
+        btn_rows = []
+        for tid, title, sdate, stime in rows:
+            label = f"{format_date(sdate, lang)}"
+            if stime:
+                label += f" {stime}"
+            label += f" · {title}"
+            if len(label) > 60:
+                label = label[:59] + "…"
+            btn_rows.append([InlineKeyboardButton(label, callback_data=f"delpick_{tid}")])
+        btn_rows.append([InlineKeyboardButton(t["btn_back"], callback_data="delback")])
+        await query.edit_message_text(
+            t["delete_choose"], parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(btn_rows))
+        return
+
+    if data.startswith("delpick_"):
+        task_id = int(data.split("_")[1])
+        conn = sqlite3.connect("users.db")
+        row = conn.execute(
+            "SELECT title, suggested_date, suggested_time FROM tasks WHERE id=? AND chat_id=?",
+            (task_id, chat_id)
+        ).fetchone()
+        conn.close()
+        if not row:
+            await query.answer("Task not found.")
+            await query.edit_message_text(t["delete_done"])
+            return
+        title, sdate, stime = row
+        date_str = format_date(sdate, lang) + (f" {stime}" if stime else "")
+        await query.edit_message_text(
+            t["delete_confirm"].format(title=title, date=date_str),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(t["btn_delete_yes"], callback_data=f"deldo_{task_id}"),
+                InlineKeyboardButton(t["btn_delete_cancel"], callback_data="delmenu"),
+            ]]))
+        return
+
+    if data.startswith("deldo_"):
+        task_id = int(data.split("_")[1])
+        conn = sqlite3.connect("users.db")
+        row = conn.execute(
+            "SELECT title, google_event_id FROM tasks WHERE id=? AND chat_id=?",
+            (task_id, chat_id)
+        ).fetchone()
+        conn.close()
+        if not row:
+            await query.answer("Task not found.")
+            await query.edit_message_text(t["delete_done"])
+            return
+        _title, google_event_id = row
+        # Remove the linked Google Calendar event first — otherwise the next
+        # calendar sync would re-import the task.
+        if google_event_id:
+            service = get_calendar_service_for_user(chat_id)
+            if service:
+                try:
+                    await gcal_call(service.events().delete(
+                        calendarId="primary", eventId=google_event_id))
+                except HttpError as he:
+                    status = getattr(getattr(he, "resp", None), "status", None)
+                    if status not in (404, 410):
+                        logger.warning(f"delete: calendar event delete failed ({status}) for task {task_id}")
+                except Exception as e:
+                    logger.warning(f"delete: calendar event delete error for task {task_id}: {e!r}")
+        conn = sqlite3.connect("users.db")
+        conn.execute("DELETE FROM tasks WHERE id=? AND chat_id=?", (task_id, chat_id))
+        conn.commit()
+        conn.close()
+        # Re-show the delete menu so the user can keep deleting, or see it's empty.
+        return await _cb_delete(query, context, "delmenu", chat_id, lang, user)
 
 async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
