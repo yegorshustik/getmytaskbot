@@ -1458,6 +1458,7 @@ def _page(lang: str, user_count: int = 0) -> str:
   <title>Get My Task — {c['tagline']}</title>
   <meta name="description" content="{c['schema_desc']}"/>
   <meta name="robots" content="index, follow"/>
+  <meta name="msvalidate.01" content="09786D82EDC64C95FD6B643927031F68"/>
   <link rel="canonical" href="{_BASE_URL}/"/>
 {hreflang_tags}
   <meta property="og:type" content="website"/>

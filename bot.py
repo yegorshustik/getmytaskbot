@@ -4518,6 +4518,7 @@ PRIVACY_POLICY_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Privacy Policy — Get My Task</title>
+  <meta name="msvalidate.01" content="09786D82EDC64C95FD6B643927031F68"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -4673,6 +4674,7 @@ TERMS_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Terms of Service — Get My Task</title>
+  <meta name="msvalidate.01" content="09786D82EDC64C95FD6B643927031F68"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
