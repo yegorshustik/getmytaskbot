@@ -1377,8 +1377,9 @@ def _page(lang: str, user_count: int = 0) -> str:
     active = {ll: ' class="active"' if ll == lang else "" for ll in ("ru", "en", "uk")}
 
     hreflang_tags = "\n".join(
-        f'  <link rel="alternate" hreflang="{l}" href="{_BASE_URL}/?lang={l}"/>'
-        for l in ("ru", "en", "uk")
+        [f'  <link rel="alternate" hreflang="{l}" href="{_BASE_URL}/?lang={l}"/>'
+         for l in ("ru", "en", "uk")]
+        + [f'  <link rel="alternate" hreflang="x-default" href="{_BASE_URL}/"/>']
     )
 
     _n_tag = f'<span class="hero-social-count">{user_count}</span>'
@@ -1457,10 +1458,10 @@ def _page(lang: str, user_count: int = 0) -> str:
   <title>Get My Task — {c['tagline']}</title>
   <meta name="description" content="{c['schema_desc']}"/>
   <meta name="robots" content="index, follow"/>
-  <link rel="canonical" href="{_BASE_URL}/?lang={lang}"/>
+  <link rel="canonical" href="{_BASE_URL}/"/>
 {hreflang_tags}
   <meta property="og:type" content="website"/>
-  <meta property="og:url" content="{_BASE_URL}/?lang={lang}"/>
+  <meta property="og:url" content="{_BASE_URL}/"/>
   <meta property="og:title" content="Get My Task — {c['tagline']}"/>
   <meta property="og:description" content="{c['desc']}"/>
   <meta property="og:site_name" content="Get My Task"/>
@@ -1775,6 +1776,7 @@ SITEMAP_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
     <xhtml:link rel="alternate" hreflang="en" href="{_BASE_URL}/?lang=en"/>
     <xhtml:link rel="alternate" hreflang="ru" href="{_BASE_URL}/?lang=ru"/>
     <xhtml:link rel="alternate" hreflang="uk" href="{_BASE_URL}/?lang=uk"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="{_BASE_URL}/"/>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
