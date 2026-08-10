@@ -1742,18 +1742,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard(lang, user["calendar_connected"], get_active_task_count(chat_id), chat_id)
         )
         return
-    # Auto-detect language from Telegram settings
-    tg_lang = (update.effective_user.language_code or "en").lower()
-    if tg_lang.startswith("ru"):
-        lang = "ru"
-    elif tg_lang.startswith("uk"):
-        lang = "uk"
-    else:
-        lang = "en"
-    save_user(chat_id, lang=lang)
-    log_event(chat_id, "new_user")
-    # Ask timezone during onboarding — required for correct reminders and calendar times
-    await show_timezone_menu(update.message, chat_id, lang, onboarding=True)
+    # First contact — let the user pick their language explicitly. Don't
+    # auto-detect from Telegram's language_code: many Ukrainian users have
+    # their Telegram interface set to Russian for historical reasons, so
+    # guessing produces the wrong first impression. Timezone selection
+    # continues from the _cb_lang callback after they pick.
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk")],
+        [InlineKeyboardButton("🇬🇧 English",   callback_data="lang_en")],
+        [InlineKeyboardButton("🇷🇺 Русский",   callback_data="lang_ru")],
+    ])
+    await update.message.reply_text(
+        "🌐 Обери мову / Choose your language / Выбери язык:",
+        reply_markup=kb,
+    )
 
 async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -2103,17 +2105,22 @@ async def send_archive_page(query, chat_id: int, lang: str, page: int = 0):
 # ── Callback sub-handlers ─────────────────────────────────────────────────────
 
 async def _cb_lang(query, context, data: str, chat_id: int, lang: str):
-    lang = data.split("_")[1]
-    save_user(chat_id, lang=lang)
-    log_event(chat_id, "new_user")
+    new_lang = data.split("_")[1]
+    prev_user = get_user(chat_id)
+    is_first_time = not (prev_user and prev_user.get("lang"))
+    save_user(chat_id, lang=new_lang)
+    if is_first_time:
+        log_event(chat_id, "new_user")
     await query.edit_message_reply_markup(reply_markup=None)
     updated_user = get_user(chat_id)
-    if not updated_user or updated_user.get("timezone") == "Europe/Moscow":
-        await show_timezone_menu(query.message, chat_id, lang, onboarding=True)
+    # Continue onboarding with timezone only on first-time language pick.
+    # For an existing user changing language via settings, just confirm.
+    if is_first_time:
+        await show_timezone_menu(query.message, chat_id, new_lang, onboarding=True)
     else:
         await query.message.reply_text(
-            TEXTS[lang]["lang_set"],
-            reply_markup=main_menu_keyboard(lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
+            TEXTS[new_lang]["lang_set"],
+            reply_markup=main_menu_keyboard(new_lang, updated_user["calendar_connected"], get_active_task_count(chat_id), chat_id)
         )
 
 
