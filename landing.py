@@ -676,9 +676,26 @@ _C = {
     "ru": {
         "lang_html": "ru",
         "tagline": "AI-менеджер задач и целей",
-        "desc": "Голосовые сообщения и текст → задачи, цели и синхронизация с Google и Apple Calendar",
+        "desc": "Надиктуй, что нужно сделать — бот сам превратит это в задачи с датой, приоритетом и напоминанием",
         "cta": "Попробовать бесплатно →",
-        "social_proof": "{n} активных пользователей",
+        "hero_badge": "На базе AI · Внутри Telegram · Бесплатно",
+        "social_proof_forms": ("пользователь", "пользователя", "пользователей"),
+
+        "how_title": "Как это работает",
+        "how_subtitle": "Три шага — и задача под контролем",
+        "how_steps": [
+            ("Надиктуй", "Скажи голосом или напиши, что нужно сделать. Обычными словами — без форм, полей и настроек."),
+            ("Задача сохранится", "Бот сам поймёт дату, время и насколько это срочно. Заполнять ничего не нужно."),
+            ("Получишь напоминание", "Придёт в Telegram вовремя. А если подключишь календарь — задача уедет в Google или Apple Calendar."),
+        ],
+
+        "privacy_title": "Приватность",
+        "privacy_subtitle": "Твои задачи — только твои",
+        "privacy_points": [
+            ("Без регистрации", "Ни почты, ни паролей, ни анкет. Нужен только Telegram, который у тебя уже есть."),
+            ("Ничего не продаём", "Задачи хранятся на защищённом сервере, не передаются третьим лицам и не используются для рекламы."),
+            ("Календарь — по твоему решению", "Подключать необязательно. Отключить можно в один тап — доступ отзывается, токен удаляется сразу."),
+        ],
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -738,7 +755,7 @@ _C = {
             ("Get My Task работает на iPhone и Android?",
              "Да. Бот работает через Telegram — он есть на iOS, Android, macOS, Windows и в браузере. Отдельное приложение устанавливать не нужно: всё управление происходит прямо в чате с ботом."),
             ("Насколько безопасно хранить задачи в Get My Task?",
-             "Задачи хранятся на защищённом сервере и не передаются третьим лицам. Токен Google OAuth хранится в зашифрованном виде и удаляется сразу при отключении календаря. Бот не читает содержимое твоих событий Google Calendar — только добавляет и обновляет задачи, которые ты сам создал."),
+             "Задачи хранятся на защищённом сервере и не передаются третьим лицам. Токен Google OAuth хранится в зашифрованном виде и удаляется сразу при отключении календаря. Если ты подключишь календарь, бот читает события ближайших суток — так задачи из календаря появляются в утреннем дайджесте и напоминаниях. Ничего из них не передаётся третьим лицам."),
         ],
 
         "for_whom_subtitle": "Создан для тех, кто мыслит быстро",
@@ -780,9 +797,26 @@ _C = {
     "en": {
         "lang_html": "en",
         "tagline": "AI Task & Goal Manager",
-        "desc": "Voice notes and texts → tasks, goals & Google / Apple Calendar sync",
+        "desc": "Just say what needs doing — the bot turns it into tasks with dates, priorities and reminders",
         "cta": "Try for free →",
-        "social_proof": "{n} active users",
+        "hero_badge": "AI-powered · Inside Telegram · Free",
+        "social_proof_forms": ("user", "users", "users"),
+
+        "how_title": "How it works",
+        "how_subtitle": "Three steps and it's handled",
+        "how_steps": [
+            ("Say it", "Speak or type what needs doing — in plain words. No forms, no fields, no setup."),
+            ("It gets saved", "The bot works out the date, the time and how urgent it is. Nothing to fill in."),
+            ("You get reminded", "Right on time, in Telegram. Connect a calendar and it syncs to Google or Apple too."),
+        ],
+
+        "privacy_title": "Privacy",
+        "privacy_subtitle": "Your tasks stay yours",
+        "privacy_points": [
+            ("No sign-up", "No email, no password, no forms. All you need is the Telegram you already have."),
+            ("Nothing is sold", "Tasks live on a secure server. They're never shared with third parties or used for advertising."),
+            ("The calendar is your call", "Connecting one is optional. Disconnect in a single tap — access is revoked and the token deleted right away."),
+        ],
 
         "for_whom_title": "Who it's for",
         "personas": [
@@ -842,7 +876,7 @@ _C = {
             ("Does Get My Task work on iPhone and Android?",
              "Yes. The bot runs inside Telegram, which is available on iOS, Android, macOS, Windows, and the web. No separate app to install — everything happens in a chat with the bot."),
             ("How safe is it to store tasks in Get My Task?",
-             "Tasks are stored on a secure server and never shared with third parties or used for advertising. Your Google OAuth token is stored encrypted and deleted immediately when you disconnect the calendar. The bot only adds and updates tasks you explicitly created — it does not read your other Calendar events."),
+             "Tasks are stored on a secure server and never shared with third parties or used for advertising. Your Google OAuth token is stored encrypted and deleted immediately when you disconnect the calendar. If you connect a calendar, the bot reads the next 24 hours of events so they show up in your morning digest and reminders. None of it is shared with third parties."),
         ],
 
         "for_whom_subtitle": "Built for people who think fast",
@@ -884,9 +918,26 @@ _C = {
     "uk": {
         "lang_html": "uk",
         "tagline": "AI-менеджер задач і цілей",
-        "desc": "Голосові повідомлення і текст → задачі, цілі та синхронізація з Google і Apple Calendar",
+        "desc": "Надиктуй, що треба зробити — бот сам перетворить це на задачі з датою, пріоритетом і нагадуванням",
         "cta": "Спробувати безкоштовно →",
-        "social_proof": "{n} активних користувачів",
+        "hero_badge": "На базі AI · Всередині Telegram · Безкоштовно",
+        "social_proof_forms": ("користувач", "користувачі", "користувачів"),
+
+        "how_title": "Як це працює",
+        "how_subtitle": "Три кроки — і задача під контролем",
+        "how_steps": [
+            ("Надиктуй", "Скажи голосом або напиши, що треба зробити. Звичайними словами — без форм, полів і налаштувань."),
+            ("Задача збережеться", "Бот сам зрозуміє дату, час і наскільки це терміново. Заповнювати нічого не треба."),
+            ("Отримаєш нагадування", "Прийде в Telegram вчасно. А якщо підключиш календар — задача поїде в Google або Apple Calendar."),
+        ],
+
+        "privacy_title": "Приватність",
+        "privacy_subtitle": "Твої задачі — тільки твої",
+        "privacy_points": [
+            ("Без реєстрації", "Ні пошти, ні паролів, ні анкет. Потрібен лише Telegram, який у тебе вже є."),
+            ("Нічого не продаємо", "Задачі зберігаються на захищеному сервері, не передаються третім особам і не використовуються для реклами."),
+            ("Календар — за твоїм рішенням", "Підключати необов'язково. Вимкнути можна в один тап — доступ відкликається, токен видаляється одразу."),
+        ],
 
         "for_whom_title": "Для кого",
         "personas": [
@@ -946,7 +997,7 @@ _C = {
             ("Get My Task працює на iPhone та Android?",
              "Так. Бот працює через Telegram — він є на iOS, Android, macOS, Windows і в браузері. Окремий застосунок встановлювати не потрібно: все управління відбувається прямо в чаті з ботом."),
             ("Наскільки безпечно зберігати задачі в Get My Task?",
-             "Задачі зберігаються на захищеному сервері і не передаються третім особам. Токен Google OAuth зберігається в зашифрованому вигляді і видаляється одразу при відключенні календаря. Бот не читає вміст твоїх подій Google Calendar — лише додає й оновлює задачі, які ти сам створив."),
+             "Задачі зберігаються на захищеному сервері і не передаються третім особам. Токен Google OAuth зберігається в зашифрованому вигляді і видаляється одразу при відключенні календаря. Якщо ти підключиш календар, бот читає події найближчої доби — так задачі з календаря з'являються в ранковому дайджесті та нагадуваннях. Нічого з них не передається третім особам."),
         ],
 
         "for_whom_subtitle": "Створено для тих, хто мислить швидко",
@@ -1010,6 +1061,43 @@ def _personas_html(c):
 
 
 _PROBLEM_ICONS = ["lightbulb-off", "layers", "shuffle"]
+
+
+def _plural(n: int, forms) -> str:
+    """Pick the right plural form. forms = (one, few, many)."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return forms[0]
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return forms[1]
+    return forms[2]
+
+
+def _how_html(c):
+    parts = []
+    for i, (title, text) in enumerate(c["how_steps"], start=1):
+        parts.append(
+            f'<div class="how-card">'
+            f'<span class="how-num">{str(i).zfill(2)}</span>'
+            f'<h3>{title}</h3>'
+            f'<p>{text}</p>'
+            f'</div>'
+        )
+    return "".join(parts)
+
+
+def _privacy_html(c):
+    icons = ("user-round-x", "shield-check", "calendar-off")
+    parts = []
+    for i, (title, text) in enumerate(c["privacy_points"]):
+        parts.append(
+            f'<div class="privacy-card">'
+            f'<span class="privacy-icon"><i data-lucide="{icons[i % len(icons)]}"></i></span>'
+            f'<h3>{title}</h3>'
+            f'<p>{text}</p>'
+            f'</div>'
+        )
+    return "".join(parts)
 
 
 def _problems_html(c):
@@ -1267,6 +1355,23 @@ nav { position: sticky; top: 0; z-index: 100; padding: 16px 0; border-bottom: 1p
 .for-card h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin: 0; line-height: 1.3; }
 .for-card p { font-size: 14px; color: var(--text2); line-height: 1.6; margin: 0; }
 
+.how-section { padding: 28px 0; }
+.how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+.how-card { border-radius: var(--radius-lg); padding: 32px; border: 1px solid var(--border); background: var(--surface); transition: all 0.3s; }
+.how-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+.how-num { font-family: "DM Mono", monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--accent2); display: block; margin-bottom: 14px; }
+.how-card h3 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; line-height: 1.3; }
+.how-card p { font-size: 15px; color: var(--text2); line-height: 1.65; margin: 0; }
+
+.privacy-section { padding: 28px 0; }
+.privacy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+.privacy-card { border-radius: var(--radius-lg); padding: 32px; border: 1px solid var(--border); background: var(--surface); transition: all 0.3s; }
+.privacy-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+.privacy-icon { display: flex; align-items: center; margin-bottom: 14px; color: var(--green); }
+.privacy-icon i { width: 26px; height: 26px; stroke: currentColor; stroke-width: 1.75; }
+.privacy-card h3 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; line-height: 1.3; }
+.privacy-card p { font-size: 15px; color: var(--text2); line-height: 1.65; margin: 0; }
+
 .problems-section { padding: 28px 0; }
 .problems-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
 .problem-card { border-radius: var(--radius-lg); padding: 36px 32px; position: relative; overflow: hidden; border: 1px solid var(--border); background: var(--surface); transition: all 0.3s; }
@@ -1346,6 +1451,8 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; }
 @media (max-width: 900px) {
   .for-grid { grid-template-columns: repeat(2, 1fr); }
   .problems-grid { grid-template-columns: 1fr; }
+  .how-grid { grid-template-columns: 1fr; }
+  .privacy-grid { grid-template-columns: 1fr; }
   .features-bento { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
@@ -1384,7 +1491,7 @@ def _page(lang: str, user_count: int = 0) -> str:
 
     _n_tag = f'<span class="hero-social-count">{user_count}</span>'
     social_html = (
-        f'<span class="hero-social">{c["social_proof"].format(n=_n_tag)}</span>'
+        f'<span class="hero-social">{_n_tag}&nbsp;{_plural(user_count, c["social_proof_forms"])}</span>'
         if user_count > 0 else ""
     )
 
@@ -1448,6 +1555,8 @@ def _page(lang: str, user_count: int = 0) -> str:
     faq_items = _faq_html(c)
     personas_items = _personas_html(c)
     problems_items = _problems_html(c)
+    how_items = _how_html(c)
+    privacy_items = _privacy_html(c)
     features_items = _features_html(c)
 
     return f"""<!DOCTYPE html>
@@ -1526,9 +1635,9 @@ def _page(lang: str, user_count: int = 0) -> str:
 <section class="hero">
   <div class="container">
     <div class="hero-logo-wrap"><div class="hero-logo">{logo_hero}</div></div>
-    <div class="hero-badge"><span class="hero-badge-dot"></span>AI-powered · Inside Telegram · Free</div>
+    <div class="hero-badge"><span class="hero-badge-dot"></span>{c['hero_badge']}</div>
     <h1><span class="gradient-text">Get My Task</span></h1>
-    <p class="section-label" style="margin-bottom:16px;">AI Task &amp; Goal Manager</p>
+    <p class="section-label" style="margin-bottom:16px;">{c['tagline']}</p>
     <p class="hero-sub">{c['desc']}</p>
     <div class="hero-actions">
       <a href="https://t.me/getmytask_bot?start=landing_hero" class="btn-primary" target="_blank" rel="noopener" onclick="if(window.gtag){{gtag('event','cta_click',{{cta_location:'hero',lang:'{lang}'}});}}"> {tg_icon}{c['cta']}</a>
@@ -1539,6 +1648,14 @@ def _page(lang: str, user_count: int = 0) -> str:
         </span>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="how-section">
+  <div class="container">
+    <p class="section-label">{c['how_title']}</p>
+    <h2 class="section-title">{c['how_subtitle']}</h2>
+    <div class="how-grid">{how_items}</div>
   </div>
 </section>
 
@@ -1562,6 +1679,14 @@ def _page(lang: str, user_count: int = 0) -> str:
   <div class="container">
     <p class="section-label">{c['features_title']}</p>
     <div class="features-bento">{features_items}</div>
+  </div>
+</section>
+
+<section class="privacy-section">
+  <div class="container">
+    <p class="section-label">{c['privacy_title']}</p>
+    <h2 class="section-title">{c['privacy_subtitle']}</h2>
+    <div class="privacy-grid">{privacy_items}</div>
   </div>
 </section>
 
