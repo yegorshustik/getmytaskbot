@@ -488,7 +488,7 @@ async def parse_time_correction(text, lang, tz_name="Europe/Moscow"):
     }
     response = await asyncio.to_thread(
         groq_client.chat.completions.create,
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompts[lang]}],
         temperature=0.1,
     )
@@ -1202,7 +1202,7 @@ async def clean_dictation(text: str, lang: str) -> str:
     try:
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             temperature=0.1,
             max_tokens=500,
@@ -1257,7 +1257,7 @@ async def process_text(text, lang, tz_name="Europe/Moscow"):
     logger.info(f"process_text input lang={lang} tz={tz_name} text={cleaned!r}")
     response = await asyncio.to_thread(
         groq_client.chat.completions.create,
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": get_system_prompt(lang, tz_name)},
             {"role": "user", "content": cleaned}
@@ -3342,7 +3342,7 @@ async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europ
     try:
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=80, temperature=0,
         )
@@ -3419,7 +3419,7 @@ async def classify_goal_or_task(text: str, lang: str, tz_name: str = "Europe/Mos
     try:
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=80, temperature=0,
         )
@@ -3438,7 +3438,7 @@ async def parse_goal_deadline(text: str, lang: str, tz_name: str) -> str:
     try:
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompts.get(lang, prompts["ru"])}],
             max_tokens=30, temperature=0,
         )
@@ -3482,7 +3482,7 @@ async def _translate_announce(text_ru: str, lang: str) -> str:
     try:
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{
                 "role": "user",
                 "content": (
@@ -3655,7 +3655,7 @@ async def parse_checklist_text(text: str, lang: str = "ru") -> dict:
         prompt = CHECKLIST_PROMPTS.get(lang, CHECKLIST_PROMPTS["ru"])
         resp = await asyncio.to_thread(
             groq_client.chat.completions.create,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt + text}],
             temperature=0.2,
             max_tokens=800,
