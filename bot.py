@@ -1577,28 +1577,40 @@ async def handle_reschedule(update, context, text, chat_id, lang):
 async def handle_reschedule_saved(update, context, reschedule_info: dict, chat_id: int, lang: str):
     """Handle rescheduling of an already saved task."""
     t = TEXTS[lang]
-    query = reschedule_info.get("query", "")
-    new_date = reschedule_info.get("new_date", "")
+    query = (reschedule_info.get("query") or "").strip()
+    new_date = (reschedule_info.get("new_date") or "").strip()
     new_time = reschedule_info.get("new_time") or None
 
-    if not query or not new_date:
+    # Either a new date or a new time is enough — "change the time to 17:00"
+    # keeps the existing date, "move to Friday" keeps the existing time.
+    if not new_date and not new_time:
         await update.message.reply_text(t["correction_unclear"])
         return
 
+    # An empty query means the user didn't name the task ("change the time to
+    # 17:00"). find_upcoming_tasks("") matches everything, so we fall back to
+    # their upcoming tasks and let them pick instead of creating a junk task.
     matches = find_upcoming_tasks(chat_id, query)
     if not matches:
-        await update.message.reply_text(
-            t["reschedule_not_found"].format(query=query), parse_mode="Markdown"
-        )
+        if query:
+            await update.message.reply_text(
+                t["reschedule_not_found"].format(query=query), parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(t["reschedule_nothing_upcoming"])
         return
+
+    # "keep" tells the callback to preserve each task's own date.
+    date_token = new_date or "keep"
 
     if len(matches) == 1:
         task = matches[0]
-        date_display = format_date(new_date, lang)
+        effective_date = new_date or task["suggested_date"]
+        date_display = format_date(effective_date, lang)
         if new_time:
             date_display += f" {new_time}"
         kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton(t["btn_reschedule_yes"], callback_data=f"mv_yes_{task['id']}_{new_date}_{new_time or ''}"),
+            InlineKeyboardButton(t["btn_reschedule_yes"], callback_data=f"mv_yes_{task['id']}_{date_token}_{new_time or ''}"),
             InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no"),
         ]])
         await update.message.reply_text(
@@ -1606,13 +1618,15 @@ async def handle_reschedule_saved(update, context, reschedule_info: dict, chat_i
             reply_markup=kb, parse_mode="Markdown"
         )
     else:
-        # Multiple matches — show list with dates for user to pick
+        # Multiple candidates — show list with dates for user to pick
         buttons = []
         for task in matches[:5]:
             date_display = format_date(task["suggested_date"], lang)
             label = f"{task['title']} — {date_display}"
+            if task.get("suggested_time"):
+                label += f" {task['suggested_time']}"
             buttons.append([InlineKeyboardButton(
-                label, callback_data=f"mv_pick_{task['id']}_{new_date}_{new_time or ''}"
+                label, callback_data=f"mv_pick_{task['id']}_{date_token}_{new_time or ''}"
             )])
         buttons.append([InlineKeyboardButton(t["btn_reschedule_no"], callback_data="mv_no")])
         await update.message.reply_text(
@@ -2892,9 +2906,12 @@ async def _cb_move_task(query, context, data: str, chat_id: int, lang: str, user
     if action == "pick":
         # Show confirmation for this specific task
         conn = sqlite3.connect("users.db")
-        row = conn.execute("SELECT title FROM tasks WHERE id=?", (task_id,)).fetchone()
+        row = conn.execute("SELECT title, suggested_date FROM tasks WHERE id=?", (task_id,)).fetchone()
         conn.close()
         title = row[0] if row else "?"
+        # "keep" = only the time changes, the task keeps its own date
+        if new_date == "keep":
+            new_date = (row[1] if row else "") or ""
         date_display = format_date(new_date, lang)
         if new_time:
             date_display += f" {new_time}"
@@ -2910,12 +2927,17 @@ async def _cb_move_task(query, context, data: str, chat_id: int, lang: str, user
 
     # action == 'yes' — do the actual reschedule
     conn = sqlite3.connect("users.db")
-    row = conn.execute("SELECT title, google_event_id FROM tasks WHERE id=?", (task_id,)).fetchone()
+    row = conn.execute(
+        "SELECT title, google_event_id, suggested_date FROM tasks WHERE id=?", (task_id,)
+    ).fetchone()
     conn.close()
     if not row:
         await query.message.edit_text(t["error"] + "task not found")
         return
-    title, google_event_id = row
+    title, google_event_id, current_date = row
+    # "keep" = only the time changes, the task keeps its own date
+    if new_date == "keep":
+        new_date = current_date
     reschedule_task_in_db(task_id, new_date, new_time)
     date_display = format_date(new_date, lang)
     if new_time:
@@ -3290,9 +3312,17 @@ def _progress_bar(pct: int, length: int = 8) -> str:
     return "█" * filled + "░" * (length - filled)
 
 _RESCHEDULE_KEYWORDS = {
-    "ru": ["перенеси", "перенести", "сдвинь", "сдвинуть", "перепланируй", "измени дату", "измени время", "перенести на"],
-    "en": ["reschedule", "move to", "shift to", "change the date", "change the time", "move it to"],
-    "uk": ["перенеси", "перенести", "пересунь", "зміни дату", "зміни час", "перенести на"],
+    "ru": ["перенеси", "перенести", "сдвинь", "сдвинуть", "перепланируй", "перепланировать",
+           "измени дату", "изменить дату", "поменяй дату", "поменять дату",
+           "измени время", "изменить время", "поменяй время", "поменять время",
+           "смени время", "сменить время", "смени дату", "сменить дату",
+           "перенести на", "поставь на", "поставить на", "передвинь", "передвинуть"],
+    "en": ["reschedule", "move to", "shift to", "change the date", "change the time",
+           "change date", "change time", "move it to", "push to", "push it to",
+           "set it to", "postpone"],
+    "uk": ["перенеси", "перенести", "пересунь", "пересунути", "переплануй",
+           "зміни дату", "змінити дату", "поміняй дату", "помінять дату",
+           "зміни час", "змінити час", "поміняй час", "постав на", "поставити на"],
 }
 
 async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europe/Moscow") -> dict:
@@ -3315,27 +3345,45 @@ async def classify_reschedule_intent(text: str, lang: str, tz_name: str = "Europ
             f"Сегодня {today} {current_time} (пояс {tz_name}).\n"
             f"Текст: «{text}»\n"
             "Хочет ли пользователь перенести (reschedule) уже существующую задачу на другую дату/время?\n"
-            "Признаки: слова «перенеси», «перенести», «сдвинь», «перепланируй», «измени дату», «измени время» + название задачи.\n"
-            "Если да — извлеки название задачи (query) и новую дату/время.\n"
-            'Верни ТОЛЬКО JSON: {"is_reschedule": true, "query": "название задачи", "new_date": "YYYY-MM-DD", "new_time": "HH:MM или null"}\n'
+            "Признаки: «перенеси», «перенести», «сдвинь», «перепланируй», «измени дату», «измени время», «поставь на».\n"
+            "ВАЖНО:\n"
+            "1) Название задачи указывать НЕ обязательно. Если пользователь не назвал задачу "
+            "(«измени время на 17:00», «перенеси на завтра») — это ВСЁ РАВНО перенос, "
+            'верни is_reschedule: true и query: null.\n'
+            "2) Дата тоже не обязательна. Если меняется только время — new_date: null.\n"
+            "3) Диапазон «с 16 до 17» означает начало в 16:00 — верни new_time: \"16:00\".\n"
+            "4) Если пользователь описывает НОВОЕ дело (а не правит существующее) — is_reschedule: false.\n"
+            'Верни ТОЛЬКО JSON: {"is_reschedule": true, "query": "название задачи или null", "new_date": "YYYY-MM-DD или null", "new_time": "HH:MM или null"}\n'
             'или {"is_reschedule": false}'
         ),
         "en": (
             f"Today is {today} {current_time} (timezone {tz_name}).\n"
             f"Text: '{text}'\n"
             "Does the user want to reschedule an existing task to a different date/time?\n"
-            "Signals: words like 'reschedule', 'move', 'shift', 'change the date/time of' + task name.\n"
-            "If yes — extract the task name (query) and the new date/time.\n"
-            'Return ONLY JSON: {"is_reschedule": true, "query": "task name", "new_date": "YYYY-MM-DD", "new_time": "HH:MM or null"}\n'
+            "Signals: 'reschedule', 'move', 'shift', 'change the date/time', 'push to'.\n"
+            "IMPORTANT:\n"
+            "1) A task name is NOT required. If the user didn't name the task "
+            "('change the time to 5pm', 'move it to tomorrow') it is STILL a reschedule — "
+            'return is_reschedule: true and query: null.\n'
+            "2) The date is optional too. If only the time changes — new_date: null.\n"
+            '3) A range like "from 4 to 5" means it starts at 16:00 — return new_time: "16:00".\n'
+            "4) If the user is describing a NEW task (not editing an existing one) — is_reschedule: false.\n"
+            'Return ONLY JSON: {"is_reschedule": true, "query": "task name or null", "new_date": "YYYY-MM-DD or null", "new_time": "HH:MM or null"}\n'
             'or {"is_reschedule": false}'
         ),
         "uk": (
             f"Сьогодні {today} {current_time} (пояс {tz_name}).\n"
             f"Текст: «{text}»\n"
             "Чи хоче користувач перенести існуючу задачу на іншу дату/час?\n"
-            "Ознаки: слова «перенеси», «перенести», «пересунь», «зміни дату», «зміни час» + назва задачі.\n"
-            "Якщо так — витягни назву задачі (query) і нову дату/час.\n"
-            'Поверни ТІЛЬКИ JSON: {"is_reschedule": true, "query": "назва задачі", "new_date": "YYYY-MM-DD", "new_time": "HH:MM або null"}\n'
+            "Ознаки: «перенеси», «перенести», «пересунь», «зміни дату», «зміни час», «постав на».\n"
+            "ВАЖЛИВО:\n"
+            "1) Назву задачі вказувати НЕ обов'язково. Якщо користувач не назвав задачу "
+            "(«зміни час на 17:00», «перенеси на завтра») — це ВСЕ ОДНО перенесення, "
+            'поверни is_reschedule: true і query: null.\n'
+            "2) Дата теж не обов'язкова. Якщо змінюється лише час — new_date: null.\n"
+            "3) Діапазон «з 16 до 17» означає початок о 16:00 — поверни new_time: \"16:00\".\n"
+            "4) Якщо користувач описує НОВУ справу (а не править існуючу) — is_reschedule: false.\n"
+            'Поверни ТІЛЬКИ JSON: {"is_reschedule": true, "query": "назва задачі або null", "new_date": "YYYY-MM-DD або null", "new_time": "HH:MM або null"}\n'
             'або {"is_reschedule": false}'
         ),
     }
