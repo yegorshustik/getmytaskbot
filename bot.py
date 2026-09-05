@@ -1436,6 +1436,71 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
     return text
 
 
+def _task_card_text(task: dict, lang: str) -> str:
+    """Render the body of a task preview card."""
+    emoji = QUADRANT_EMOJI.get(task.get("quadrant"), "⚪")
+    time_sep = _TIME_SEP.get(lang, " ")
+    if task.get("suggested_date"):
+        date_display = format_date(task["suggested_date"], lang)
+        date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
+    else:
+        date_line = ""
+    base = (
+        f"{emoji} *{task['title']}*\n"
+        f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
+        + (date_line + "\n" if date_line else "")
+    )
+    if task.get("recurring") and task.get("recurrence"):
+        return base + f"🔄 _{describe_recurrence(task['recurrence'], lang)}_"
+    return base + f"_{task.get('reason', '')}_"
+
+
+def _task_card_keyboard(task: dict, i: int, lang: str, user, picker: bool = False) -> InlineKeyboardMarkup:
+    """Buttons under a task preview card.
+
+    The priority control is a single labelled button instead of four bare
+    coloured circles — users had no way to tell what the colours meant.
+    picker=True expands it into the four named quadrant options.
+    """
+    t = TEXTS[lang]
+    if task.get("recurring") and task.get("recurrence"):
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton(t["btn_recur_yes"], callback_data=f"recur_yes_{i}")],
+            [InlineKeyboardButton(t["btn_recur_once"], callback_data=f"recur_once_{i}"),
+             InlineKeyboardButton(t["skip"], callback_data=f"skip_{i}")],
+        ])
+
+    current_q = task.get("quadrant", "Q3")
+    names = QUADRANT_NAMES.get(lang, QUADRANT_NAMES["ru"])
+
+    if picker:
+        rows = [
+            [InlineKeyboardButton(
+                f"{QUADRANT_EMOJI[q]} {names[q]}" + (" ✓" if q == current_q else ""),
+                callback_data=f"qc_{i}_{q}")]
+            for q in ("Q1", "Q2", "Q3", "Q4")
+        ]
+        rows.append([InlineKeyboardButton(t["btn_back"], callback_data=f"qp_close_{i}")])
+        return InlineKeyboardMarkup(rows)
+
+    priority_row = [InlineKeyboardButton(
+        f"{QUADRANT_EMOJI.get(current_q, '⚪')} {t['priority_label']}: {names.get(current_q, '')}",
+        callback_data=f"qp_open_{i}")]
+    save_skip_row = [
+        InlineKeyboardButton(t["save"], callback_data=f"save_{i}"),
+        InlineKeyboardButton(t["skip"], callback_data=f"skip_{i}"),
+    ]
+    if bool(user and user.get("calendar_connected")) or bool(user and user.get("ical_token")):
+        # Calendar already set up — sync is automatic, no extra button needed
+        return InlineKeyboardMarkup([priority_row, save_skip_row])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t["add_calendar"], callback_data="connect_calendar"),
+         InlineKeyboardButton(t["apple_cal"], callback_data=f"ics_{i}")],
+        priority_row,
+        save_skip_row,
+    ])
+
+
 async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
     """Show task cards.
     indices: list mapping position→index in context.user_data["tasks"] for callbacks.
@@ -1445,57 +1510,8 @@ async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
     master_tasks = (context.user_data.get("tasks") or []) if context else []
     for pos, task in enumerate(tasks):
         i = indices[pos] if indices is not None else pos
-        emoji = QUADRANT_EMOJI.get(task["quadrant"], "⚪")
-        time_sep = _TIME_SEP.get(lang, " ")
-        if task.get("suggested_date"):
-            date_display = format_date(task["suggested_date"], lang)
-            date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
-        else:
-            date_line = ""
-        base_text = (
-            f"{emoji} *{task['title']}*\n"
-            f"{task['quadrant']} — {task['quadrant_name']}\n"
-            + (date_line + "\n" if date_line else "")
-        )
-        save_skip_row = [
-            InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{i}"),
-            InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}"),
-        ]
-        if task.get("recurring") and task.get("recurrence"):
-            schedule = describe_recurrence(task["recurrence"], lang)
-            text = base_text + f"🔄 _{schedule}_"
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(TEXTS[lang]["btn_recur_yes"], callback_data=f"recur_yes_{i}")],
-                [InlineKeyboardButton(TEXTS[lang]["btn_recur_once"], callback_data=f"recur_once_{i}"),
-                 InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{i}")],
-            ])
-        else:
-            text = base_text + f"_{task['reason']}_"
-            # Quadrant change row — 4 small buttons; the active one gets a marker
-            current_q = task.get("quadrant", "Q3")
-            def _q_label(q):
-                emoji = QUADRANT_EMOJI[q]
-                return f"• {emoji} •" if q == current_q else emoji
-            quadrant_row = [
-                InlineKeyboardButton(_q_label("Q1"), callback_data=f"qc_{i}_Q1"),
-                InlineKeyboardButton(_q_label("Q2"), callback_data=f"qc_{i}_Q2"),
-                InlineKeyboardButton(_q_label("Q3"), callback_data=f"qc_{i}_Q3"),
-                InlineKeyboardButton(_q_label("Q4"), callback_data=f"qc_{i}_Q4"),
-            ]
-            gcal_connected = bool(user and user.get("calendar_connected"))
-            ical_subscribed = bool(user and user.get("ical_token"))
-            if gcal_connected or ical_subscribed:
-                # Calendar is already set up — sync happens automatically, no extra button needed
-                keyboard = InlineKeyboardMarkup([quadrant_row, save_skip_row])
-            else:
-                # No calendar connected — offer both options
-                gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
-                apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{i}")
-                keyboard = InlineKeyboardMarkup([
-                    [gcal_btn, apple_btn],
-                    quadrant_row,
-                    save_skip_row,
-                ])
+        text = _task_card_text(task, lang)
+        keyboard = _task_card_keyboard(task, i, lang, user)
         card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
         # Store all message_ids needed for skip-cleanup in the task itself
         if context is not None:
@@ -2706,46 +2722,38 @@ async def _cb_quadrant_change(query, context, data: str, chat_id: int, lang: str
         return  # No change
     task["quadrant"] = new_q
     task["quadrant_name"] = QUADRANT_NAMES.get(lang, QUADRANT_NAMES["ru"])[new_q]
-    # Re-render the card
-    emoji = QUADRANT_EMOJI[new_q]
-    time_sep = _TIME_SEP.get(lang, " ")
-    if task.get("suggested_date"):
-        date_display = format_date(task["suggested_date"], lang)
-        date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
-    else:
-        date_line = ""
-    base_text = (
-        f"{emoji} *{task['title']}*\n"
-        f"{new_q} — {task['quadrant_name']}\n"
-        + (date_line + "\n" if date_line else "")
-    )
-    text = base_text + f"_{task.get('reason','')}_"
-    # Rebuild keyboard with updated active marker
-    def _q_label(q):
-        e = QUADRANT_EMOJI[q]
-        return f"• {e} •" if q == new_q else e
-    quadrant_row = [
-        InlineKeyboardButton(_q_label("Q1"), callback_data=f"qc_{idx_int}_Q1"),
-        InlineKeyboardButton(_q_label("Q2"), callback_data=f"qc_{idx_int}_Q2"),
-        InlineKeyboardButton(_q_label("Q3"), callback_data=f"qc_{idx_int}_Q3"),
-        InlineKeyboardButton(_q_label("Q4"), callback_data=f"qc_{idx_int}_Q4"),
-    ]
-    save_skip_row = [
-        InlineKeyboardButton(TEXTS[lang]["save"], callback_data=f"save_{idx_int}"),
-        InlineKeyboardButton(TEXTS[lang]["skip"], callback_data=f"skip_{idx_int}"),
-    ]
-    gcal_connected = bool(user and user.get("calendar_connected"))
-    ical_subscribed = bool(user and user.get("ical_token"))
-    if gcal_connected or ical_subscribed:
-        keyboard = InlineKeyboardMarkup([quadrant_row, save_skip_row])
-    else:
-        gcal_btn = InlineKeyboardButton(TEXTS[lang]["add_calendar"], callback_data="connect_calendar")
-        apple_btn = InlineKeyboardButton(TEXTS[lang]["apple_cal"], callback_data=f"ics_{idx_int}")
-        keyboard = InlineKeyboardMarkup([[gcal_btn, apple_btn], quadrant_row, save_skip_row])
+    # Re-render the card, collapsing the picker back to the single button
     try:
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        await query.edit_message_text(
+            _task_card_text(task, lang),
+            parse_mode="Markdown",
+            reply_markup=_task_card_keyboard(task, idx_int, lang, user),
+        )
     except Exception as e:
         logger.error(f"_cb_quadrant_change edit failed: {e}")
+
+
+async def _cb_quadrant_picker(query, context, data: str, chat_id: int, lang: str, user):
+    """Handle qp_open_<idx> / qp_close_<idx> — expand or collapse the priority picker."""
+    parts = data.split("_")
+    if len(parts) != 3:
+        return
+    _, mode, idx_str = parts
+    try:
+        idx_int = int(idx_str)
+    except ValueError:
+        return
+    tasks = context.user_data.get("tasks", [])
+    if idx_int >= len(tasks):
+        await query.answer("Session expired")
+        return
+    task = tasks[idx_int]
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=_task_card_keyboard(task, idx_int, lang, user, picker=(mode == "open"))
+        )
+    except Exception as e:
+        logger.error(f"_cb_quadrant_picker edit failed: {e}")
 
 
 async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, user):
@@ -3073,6 +3081,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _cb_reminder_action(query, context, data, chat_id, lang, user)
     if data.startswith("qc_"):
         return await _cb_quadrant_change(query, context, data, chat_id, lang, user)
+    if data.startswith("qp_"):
+        return await _cb_quadrant_picker(query, context, data, chat_id, lang, user)
     if data.startswith(("cl_", "clt_", "cli_")):
         return await _cb_checklist(query, context, data, chat_id, lang)
     if data in ("deletedata_confirm", "deletedata_cancel"):

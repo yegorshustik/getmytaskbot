@@ -5,7 +5,7 @@ _FEEDBACK_MAX_TEXT_LEN = 1000
 TEXTS = {
     "ru": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
-        "lang_set": "Язык установлен: Русский 🇷🇺\n\nПросто напишите или надиктуйте голосовое — я извлеку задачи и расставлю их по матрице Эйзенхауэра.",
+        "lang_set": "Язык установлен: Русский 🇷🇺\n\nПросто напиши или надиктуй голосовое — я вытащу из него задачи, расставлю по важности и напомню вовремя.\n\nНапример: «завтра в 11 позвонить в банк и купить продукты вечером»",
         "processing": "Обрабатываю...",
         "transcribing": "Транскрибирую голосовое...",
         "recognized": "Распознал: ",
@@ -20,6 +20,7 @@ TEXTS = {
         "add_calendar": "📅 Google Calendar",
         "apple_cal": "🍎 Apple Calendar",
         "save": "✅ Сохранить",
+        "priority_label": "Приоритет",
         "skip": "❌ Пропустить",
         "adding": "⏳ Добавляю в Календарь...",
         "added": "✅ Добавлено в Календарь",
@@ -114,7 +115,7 @@ TEXTS = {
         "timezone_invalid": "❌ Не удалось распознать временную зону. Попробуйте формат: `Europe/Moscow`",
         "help": (
             "📋 *Что я умею:*\n\n"
-            "• Напишите или надиктуйте голосовое — извлеку задачи и расставлю по матрице Эйзенхауэра\n"
+            "• Напишите или надиктуйте голосовое — извлеку задачи и расставлю по важности и срочности\n"
             "• Предложу дату и время для каждой задачи\n"
             "• Сохраню задачу в боте и автоматически добавлю в Google Календарь (если подключён)\n"
             "• Синхронизирую Google Календарь — новые события подтягиваются каждые 15 минут\n"
@@ -277,7 +278,7 @@ TEXTS = {
     },
     "en": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
-        "lang_set": "Language set: English 🇬🇧\n\nJust type or send a voice message — I'll extract tasks and classify them using the Eisenhower Matrix.",
+        "lang_set": "Language set: English 🇬🇧\n\nJust type or record a voice message — I'll pull the tasks out of it, sort them by what matters most, and remind you in time.\n\nTry: \u201ccall the bank tomorrow at 11 and buy groceries in the evening\u201d",
         "processing": "Processing...",
         "transcribing": "Transcribing voice message...",
         "recognized": "Recognized: ",
@@ -292,6 +293,7 @@ TEXTS = {
         "add_calendar": "📅 Google Calendar",
         "apple_cal": "🍎 Apple Calendar",
         "save": "✅ Save",
+        "priority_label": "Priority",
         "skip": "❌ Skip",
         "adding": "⏳ Adding to Calendar...",
         "added": "✅ Added to Calendar",
@@ -386,7 +388,7 @@ TEXTS = {
         "timezone_invalid": "❌ Could not recognize timezone. Try format: `America/New_York`",
         "help": (
             "📋 *What I can do:*\n\n"
-            "• Type or send a voice message — I'll extract tasks and classify them using the Eisenhower Matrix\n"
+            "• Type or record a voice message — I'll extract the tasks and sort them by urgency and importance\n"
             "• Suggest a date and time for each task\n"
             "• Save the task and auto-sync it to Google Calendar (if connected)\n"
             "• Sync Google Calendar — new events are imported every 15 minutes\n"
@@ -549,7 +551,7 @@ TEXTS = {
     },
     "uk": {
         "choose_lang": "Привет! Выбери язык / Choose language / Оберіть мову:",
-        "lang_set": "Мову встановлено: Українська 🇺🇦\n\nПросто напишіть або надиктуйте голосове — я витягну задачі та розставлю їх по матриці Ейзенхауера.",
+        "lang_set": "Мову встановлено: Українська 🇺🇦\n\nПросто напиши або надиктуй голосове — я витягну з нього задачі, розставлю за важливістю та нагадаю вчасно.\n\nНаприклад: «завтра об 11 подзвонити в банк і купити продукти ввечері»",
         "processing": "Обробляю...",
         "transcribing": "Транскрибую голосове...",
         "recognized": "Розпізнав: ",
@@ -564,6 +566,7 @@ TEXTS = {
         "add_calendar": "📅 Google Calendar",
         "apple_cal": "🍎 Apple Calendar",
         "save": "✅ Зберегти",
+        "priority_label": "Пріоритет",
         "skip": "❌ Пропустити",
         "adding": "⏳ Додаю до Календаря...",
         "added": "✅ Додано до Календаря",
@@ -658,7 +661,7 @@ TEXTS = {
         "timezone_invalid": "❌ Не вдалося розпізнати часовий пояс. Спробуйте формат: `Europe/Kyiv`",
         "help": (
             "📋 *Що я вмію:*\n\n"
-            "• Напишіть або надиктуйте голосове — витягну задачі та розставлю по матриці Ейзенхауера\n"
+            "• Напишіть або надиктуйте голосове — витягну задачі та розставлю за важливістю і терміновістю\n"
             "• Запропоную дату і час для кожної задачі\n"
             "• Збережу задачу в боті та автоматично додам до Google Календаря (якщо підключено)\n"
             "• Синхронізую Google Календар — нові події підтягуються кожні 15 хвилин\n"
