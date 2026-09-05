@@ -772,13 +772,6 @@ _C = {
         "tasks_count_prefix": "Уже создано ",
         "tasks_count_suffix": "задач создано",
 
-        "how_title": "Как это работает",
-        "how_steps": [
-            ("🎤", "Надиктуй или напиши", "Отправь голосовое или текст с задачами прямо в Telegram"),
-            ("🤖", "Бот структурирует", "Разобьёт на задачи, расставит Q1–Q4, предложит дату и время"),
-            ("📅", "Синхронизируй с Calendar", "Один тап — задача в Google Calendar с напоминанием"),
-        ],
-
         "demo_title": "Смотри, как это работает",
         "demo_user_msg": "Позвони Максу в пятницу в 11, сдай отчёт в понедельник до 18:00",
         "demo_bot_tasks": [
@@ -893,13 +886,6 @@ _C = {
         "tasks_count_prefix": "",
         "tasks_count_suffix": "tasks created",
 
-        "how_title": "How it works",
-        "how_steps": [
-            ("🎤", "Dictate or type", "Send a voice note or text with tasks to Telegram"),
-            ("🤖", "Bot structures it", "Splits into tasks, sets Q1–Q4 priorities, suggests date & time"),
-            ("📅", "Sync with Calendar", "One tap — task in Google Calendar with a reminder"),
-        ],
-
         "demo_title": "See it in action",
         "demo_user_msg": "Call Max on Friday at 11am, submit the report by Monday 6pm",
         "demo_bot_tasks": [
@@ -1013,13 +999,6 @@ _C = {
         "cookie_decline": "Відхилити",
         "tasks_count_prefix": "Вже створено ",
         "tasks_count_suffix": "завдань створено",
-
-        "how_title": "Як це працює",
-        "how_steps": [
-            ("🎤", "Надиктуй або напиши", "Відправ голосове або текст із задачами прямо в Telegram"),
-            ("🤖", "Бот структурує", "Розіб'є на задачі, розставить Q1–Q4, запропонує дату та час"),
-            ("📅", "Синхронізуй з Calendar", "Один тап — задача в Google Calendar з нагадуванням"),
-        ],
 
         "demo_title": "Дивись, як це працює",
         "demo_user_msg": "Зателефонуй Максу в п'ятницю о 11, здай звіт в понеділок до 18:00",
@@ -1161,20 +1140,6 @@ def _faq_html(c):
             f'<span class="faq-icon">+</span>'
             f'</button>'
             f'<div class="faq-a"><div class="faq-a-inner">{a}</div></div>'
-            f'</div>'
-        )
-    return "".join(parts)
-
-
-def _how_html(c):
-    parts = []
-    for i, (icon, title, desc) in enumerate(c["how_steps"], 1):
-        parts.append(
-            f'<div class="how-step">'
-            f'<div class="how-num">{i}</div>'
-            f'<div class="how-icon">{icon}</div>'
-            f'<h3 class="how-step-title">{title}</h3>'
-            f'<p class="how-step-desc">{desc}</p>'
             f'</div>'
         )
     return "".join(parts)
