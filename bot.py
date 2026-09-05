@@ -1386,8 +1386,9 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
         is_done = (date < today_str) or (date == today_str and bool(time) and time < current_time_str)
         by_date[date].append((title, quadrant, time, is_done))
 
-    sorted_dates = sorted(by_date.keys())
-    visible_dates = [d for d in sorted_dates if d <= tomorrow_str]  # Show today and tomorrow only
+    # Show every upcoming day, not just today+tomorrow — the caller already
+    # bounds the result set. Capping here silently hid tasks the user had.
+    visible_dates = sorted(by_date.keys())
 
     blocks = []
     for date in visible_dates:

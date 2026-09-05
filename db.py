@@ -335,8 +335,10 @@ def get_active_task_count(chat_id):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
     today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+    # All upcoming undone tasks, not just today's — the menu badge sat at 0
+    # while the user had a list of tasks waiting for the days ahead.
     count = conn.execute(
-        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date = ? AND done=0",
+        "SELECT COUNT(*) FROM tasks WHERE chat_id=? AND suggested_date >= ? AND done=0",
         (chat_id, today)
     ).fetchone()[0]
     conn.close()
