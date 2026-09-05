@@ -1436,23 +1436,27 @@ def build_tasks_by_day(rows, lang: str, today_str: str, tomorrow_str: str, curre
     return text
 
 
-def _task_card_text(task: dict, lang: str) -> str:
-    """Render the body of a task preview card."""
-    emoji = QUADRANT_EMOJI.get(task.get("quadrant"), "⚪")
-    time_sep = _TIME_SEP.get(lang, " ")
+def _task_card_text(task: dict, lang: str, tz_name: str = "Europe/Moscow") -> str:
+    """Render the body of a task preview card.
+
+    Deliberately minimal: title + when. The quadrant used to be printed as
+    "Q3 — Срочно, не важно" and repeated on the priority button, and the
+    LLM's `reason` mostly parroted the user's own words — both were noise.
+    """
+    lines = [f"*{task['title']}*"]
     if task.get("suggested_date"):
-        date_display = format_date(task["suggested_date"], lang)
-        date_line = f"📅 {date_display}" + (f"{time_sep}{task['suggested_time']}" if task.get("suggested_time") else "")
-    else:
-        date_line = ""
-    base = (
-        f"{emoji} *{task['title']}*\n"
-        f"{task.get('quadrant', '')} — {task.get('quadrant_name', '')}\n"
-        + (date_line + "\n" if date_line else "")
-    )
+        try:
+            today = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+        except Exception:
+            today = datetime.now().strftime("%Y-%m-%d")
+        when = format_date_relative(task["suggested_date"], today, "", lang)
+        when = when[:1].upper() + when[1:]
+        if task.get("suggested_time"):
+            when += f", {task['suggested_time']}"
+        lines.append(f"📅 {when}")
     if task.get("recurring") and task.get("recurrence"):
-        return base + f"🔄 _{describe_recurrence(task['recurrence'], lang)}_"
-    return base + f"_{task.get('reason', '')}_"
+        lines.append(f"🔄 _{describe_recurrence(task['recurrence'], lang)}_")
+    return "\n".join(lines)
 
 
 def _task_card_keyboard(task: dict, i: int, lang: str, user, picker: bool = False) -> InlineKeyboardMarkup:
@@ -1507,10 +1511,11 @@ async def show_tasks(update, chat_id, tasks, lang, context=None, indices=None):
              If None, position == index (default behaviour).
     """
     user = get_user(chat_id)
+    tz_name = (user["timezone"] if user else None) or "Europe/Moscow"
     master_tasks = (context.user_data.get("tasks") or []) if context else []
     for pos, task in enumerate(tasks):
         i = indices[pos] if indices is not None else pos
-        text = _task_card_text(task, lang)
+        text = _task_card_text(task, lang, tz_name)
         keyboard = _task_card_keyboard(task, i, lang, user)
         card_msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
         # Store all message_ids needed for skip-cleanup in the task itself
@@ -2723,9 +2728,10 @@ async def _cb_quadrant_change(query, context, data: str, chat_id: int, lang: str
     task["quadrant"] = new_q
     task["quadrant_name"] = QUADRANT_NAMES.get(lang, QUADRANT_NAMES["ru"])[new_q]
     # Re-render the card, collapsing the picker back to the single button
+    tz_name = (user["timezone"] if user else None) or "Europe/Moscow"
     try:
         await query.edit_message_text(
-            _task_card_text(task, lang),
+            _task_card_text(task, lang, tz_name),
             parse_mode="Markdown",
             reply_markup=_task_card_keyboard(task, idx_int, lang, user),
         )
