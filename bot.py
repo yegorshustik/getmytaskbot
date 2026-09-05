@@ -2676,7 +2676,7 @@ async def _cb_recur(query, context, data: str, chat_id: int, lang: str, user):
                         await msg.delete()
                         added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
                         await query.message.reply_text(
-                            TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                            TEXTS[lang]["saved_with_calendar"],
                             parse_mode="Markdown", reply_markup=added_markup
                         )
                     except Exception as e:
@@ -2706,7 +2706,7 @@ async def _cb_conflict(query, context, data: str, chat_id: int, lang: str, user)
             await msg.delete()
             added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
             await query.message.reply_text(
-                TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                TEXTS[lang]["saved_with_calendar"],
                 parse_mode="Markdown",
                 reply_markup=added_markup
             )
@@ -2824,14 +2824,9 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
             link, task_id = add_to_calendar(chat_id, task, existing_task_id=task.get("_saved_task_id"))
             context.user_data.setdefault("saved_task_ids", {})[idx_int] = task_id
             await msg.delete()
-            success_texts = {
-                "ru": f"✅ *{task['title']}* сохранена в задачах и добавлена в Google Calendar",
-                "en": f"✅ *{task['title']}* saved to tasks and added to Google Calendar",
-                "uk": f"✅ *{task['title']}* збережено у задачах та додано до Google Calendar",
-            }
             added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
             await query.message.reply_text(
-                success_texts.get(lang, success_texts["ru"]),
+                TEXTS[lang]["saved_with_calendar"],
                 parse_mode="Markdown",
                 reply_markup=added_markup
             )
@@ -2880,7 +2875,7 @@ async def _cb_task_action(query, context, data: str, chat_id: int, lang: str, us
                     await msg.delete()
                     added_markup = InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["added_btn"], url=link)]]) if link else None
                     await query.message.reply_text(
-                        TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                        TEXTS[lang]["saved_with_calendar"],
                         parse_mode="Markdown",
                         reply_markup=added_markup
                     )
@@ -4234,7 +4229,7 @@ async def oauth_callback(request):
                               if link else None)
                     await bot_app.bot.send_message(
                         chat_id=chat_id,
-                        text=card + "\n\n" + TEXTS[lang]["saved_with_calendar"].format(title=task["title"]),
+                        text=card + "\n\n" + TEXTS[lang]["saved_with_calendar"],
                         parse_mode="Markdown", reply_markup=markup,
                     )
                 except Exception as e:
