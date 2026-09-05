@@ -1681,6 +1681,21 @@ async def process_and_show_from_callback(query, context, text, chat_id, lang):
     await show_tasks(_FakeUpdate(), chat_id, valid_tasks, lang, context=context)
 
 
+async def _clear_status_msg(context, chat_id):
+    """Drop the transient 'Recognised: …' bubble once a real card is shown.
+
+    Left in place on failure paths — if the bot misheard, that echo is the
+    only way for the user to see what it actually got.
+    """
+    msg_id = context.user_data.pop("_status_msg_id", None)
+    if not msg_id:
+        return
+    try:
+        await context.bot.delete_message(chat_id, msg_id)
+    except Exception:
+        pass
+
+
 async def process_and_show(update, context, text, chat_id, lang):
     user = get_user(chat_id)
     tz_name = user["timezone"] if user else "Europe/Moscow"
@@ -1713,6 +1728,7 @@ async def process_and_show(update, context, text, chat_id, lang):
             InlineKeyboardButton(t["btn_goal_yes"], callback_data="goal_confirm_yes"),
             InlineKeyboardButton(t["btn_goal_no"],  callback_data="goal_confirm_no"),
         ]])
+        await _clear_status_msg(context, chat_id)
         await update.message.reply_text("\n".join(preview_lines), parse_mode="Markdown", reply_markup=keyboard)
         return
     tasks = await process_text(text, lang, tz_name)
@@ -1737,6 +1753,8 @@ async def process_and_show(update, context, text, chat_id, lang):
         return
     # Store all tasks with correct indices upfront
     context.user_data["tasks"] = valid_tasks
+    # The card itself now confirms what was understood — drop the echo.
+    await _clear_status_msg(context, chat_id)
     with_date_idx = [i for i, t in enumerate(valid_tasks) if t.get("suggested_date")]
     no_date_idx   = [i for i, t in enumerate(valid_tasks) if not t.get("suggested_date")]
     # Show tasks that already have a date
@@ -2014,8 +2032,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text or len(text) < 5:
             await update.message.reply_text(TEXTS[lang]["no_text"])
             return
-        recognized_msg = await update.message.reply_text(TEXTS[lang]["recognized"] + text)
-        cleanup_ids.append(recognized_msg.message_id)
+        # Reuse the "transcribing…" bubble instead of sending a second message.
+        # It's dropped once a card is produced (see _clear_status_msg) and kept
+        # only when the bot failed to understand, so the user can see what it heard.
+        try:
+            await transcribing_msg.edit_text(TEXTS[lang]["recognized"] + text)
+        except Exception:
+            pass
+        context.user_data["_status_msg_id"] = transcribing_msg.message_id
         context.user_data["_cleanup_ids"] = cleanup_ids
         # Checklist mode (admin only): intercept transcribed voice and route to checklist parser
         if await _handle_checklist_input(update, context, text, chat_id):
